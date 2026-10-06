@@ -1,3 +1,5 @@
+import {SETS,FAMILY_BIAS,countSets} from './sets';
+import {homeBonuses,freshHome} from './home';
 import { HEROES, WEAPONS, PASSIVES, EQUIPMENT, AFFIXES, ENEMIES, BOSSES, ENEMY_AFFIXES, bossIndex } from './data';
 import type { Hero, Weapon, Passive, Stats, Mods, Effect, EnemyDef, Gear, Save, NodeType, Hook, EventOption } from './types';
 import { DIFFICULTY, COMBAT_FEEL, floorValue } from './balance';
@@ -5,8 +7,8 @@ import { BOUNTIES, MUTATIONS, TOWER_LIMIT } from './tower';
 import type { GameMode } from './types';
 export const W=720, H=960, PLAYER_Y=884;
 export type Panel = 'level'|'loot'|'clear'|'map'|'shop'|'event'|'chest'|'altar'|'heal'|'bossintro'|'pause'|'forge'|null;
-export type Enemy = { uid:number; def:EnemyDef; x:number; y:number; hp:number; maxHp:number; age:number; action:number; flash:number; poison:number; poisonTime:number; burn:number; burnTime:number; bleed:number; bleedTime:number; ice:number; iceTime:number; frozen:number; snare:number; mark:number; markTime:number; tick:number; revived:boolean; elite:boolean; affix:string; barrier:number; boss:number; phase:number; targetX:number; dead:boolean; entering:boolean };
-export type Shot = { active:boolean; uid:number; x:number; y:number; vx:number; vy:number; age:number; life:number; damage:number; weapon:Weapon; level:number; pierce:number; bounce:number; hits:Set<number>; returning:boolean; turned:boolean; turret:boolean; child:boolean; seed:number; lastHit:number; anchorY?:number };
+export type Enemy = { uid:number; def:EnemyDef; x:number; y:number; hp:number; maxHp:number; age:number; action:number; flash:number; poison:number; poisonTime:number; burn:number; burnTime:number; bleed:number; bleedTime:number; ice:number; iceTime:number; frozen:number; snare:number; mark:number; markTime:number; tick:number; revived:boolean; elite:boolean; affix:string; barrier:number; boss:number; phase:number; targetX:number; dead:boolean; entering:boolean; doom:number; doomDamage:number };
+export type Shot = { active:boolean; uid:number; x:number; y:number; vx:number; vy:number; age:number; life:number; damage:number; weapon:Weapon; level:number; pierce:number; bounce:number; hits:Set<number>; returning:boolean; turned:boolean; turret:boolean; child:boolean; seed:number; lastHit:number; anchorY?:number; stage:number };
 export type Bullet = {active:boolean;x:number;y:number;vx:number;vy:number;damage:number;life:number;color:string};
 export type Drop = {uid:number;kind:'xp'|'gold'|'gear';x:number;y:number;value:number;gear?:Gear;age:number};
 export type Vfx = {x:number;y:number;kind:'hit'|'crit'|'nova'|'heal'|'chain'|'text'|'skill'|'death';text:string;color:string;life:number;max:number;radius:number;tx?:number;ty?:number};
@@ -25,7 +27,7 @@ export class Run {
  floor=1; row=0; col=1; kills=0; bossKills=0; totalGold=0; time=0; roomTime=0; duration=28; spawnTimer=0; skillCD=0; invincible=0; combo=0; comboTimer=0; second=0; strongBoss=false; fortune=0; rerolls=2; bossReward=0;
  phase:'combat'|'between'|'dead'|'victory'='combat'; panel:Panel=null; revision=0; room:NodeType='battle'; route:NodeType[][]=[]; visited:{row:number;col:number}[]=[];
  weapons:{id:string;level:number;timer:number;burst:number;forged?:number;awakened?:boolean;volleys?:number}[]=[]; passives:Record<string,number>={}; equipment:Record<string,Gear>={}; extraMods:Mods={};
- mutationId=0; mutationTimer=5; bounty?:{id:string;progress:number;claimed:boolean};
+ foundFamilies=new Set<string>(); foundGearIds=new Set<string>(); overdrive=0; overdriveTime=0; mutationId=0; mutationTimer=5; bounty?:{id:string;progress:number;claimed:boolean};
  enemies:Enemy[]=[]; shots:Shot[]=[]; bullets:Bullet[]=[]; drops:Drop[]=[]; vfx:Vfx[]=[]; hazards:Hazard[]=[]; turrets:{x:number;y:number;life:number;timer:number;weapon:Weapon;level:number}[]=[];
  loot:Gear[]=[]; lootReturn:Panel=null; pendingLevels=0; choices:Choice[]=[]; shop:{kind:'gear'|'weapon'|'passive'|'heal';id?:string;gear?:Gear;cost:number;sold:boolean}[]=[]; refreshes=0; eventId=''; notices:string[]=[]; seen=new Set<string>();
  private uid=1; private effects:{effect:Effect;stacks:number;key:string}[]=[]; private effectCooldown=new Map<string,number>(); private shotPool:Shot[]=[]; private bulletPool:Bullet[]=[];
@@ -33,7 +35,8 @@ export class Run {
  constructor(heroId:string,public meta:Save,seed?:number,public mode:GameMode='tower'){
   this.rng=new Random(seed);this.hero=HEROES.find(h=>h.id===heroId)||HEROES[0];this.weapons=[{id:this.hero.weapon,level:1,timer:.1,burst:0}];
   this.baseCurse=this.hero.id==='hex'?2:0;this.gold+=meta.upgrades.supply*10+(this.hero.id==='coin'?60:0);this.extraMods={maxHp:meta.upgrades.vitality*5,luck:meta.upgrades.fortune*.03};
-  this.recalculate();this.hp=this.stats.maxHp;this.shield=this.stats.shieldMax*.3;this.buildRoute();this.seen.add(this.hero.id);this.seen.add(this.hero.weapon);this.startCombat('battle');
+  const home=homeBonuses(meta.home??freshHome());for(const [key,value]of Object.entries(home.mods))this.extraMods[key as keyof Stats]=(this.extraMods[key as keyof Stats]||0)+value!;this.gold+=home.gold;this.rerolls+=home.rerolls;this.weapons[0].forged=home.forged;
+  this.recalculate();this.hp=this.stats.maxHp;this.shield=Math.min(this.stats.shieldMax,this.stats.shieldMax*.3+home.shield);this.buildRoute();this.seen.add(this.hero.id);this.seen.add(this.hero.weapon);this.startCombat('battle');
  }
  recalculate(){
   const oldMax=this.stats.maxHp; this.stats={...BASE};this.effects=[];
@@ -43,6 +46,7 @@ export class Run {
   for(const [id,n]of Object.entries(this.passives)){const p=PASSIVES.find(p=>p.id===id);if(p){add(p.mods,n);effects(p.effects,n,id);}}
   let curses=this.baseCurse;
   for(const gear of Object.values(this.equipment)){add(gear.mods);effects(gear.effects,1,`gear${gear.uid}`);if(gear.def.cursed)curses+=2;}
+  for(const set of SETS){const count=this.setCounts[set.id]||0;for(const tier of set.tiers)if(count>=tier.pieces){add(tier.mods);effects(tier.effects,1,`set:${set.id}:${tier.pieces}`);}}
   this.curse=curses;this.stats.damage=Math.max(.2,this.stats.damage);this.stats.speed=Math.max(.25,this.stats.speed);this.stats.maxHp=Math.max(25,this.stats.maxHp);this.stats.crit=Math.min(.85,this.stats.crit);this.stats.dodge=Math.min(.5,this.stats.dodge);this.stats.move=Math.max(.5,this.stats.move);
   if(oldMax<this.stats.maxHp)this.hp+=this.stats.maxHp-oldMax;this.hp=Math.min(this.hp,this.stats.maxHp);this.shield=Math.min(this.shield,this.stats.shieldMax);
  }
@@ -51,28 +55,33 @@ export class Run {
   this.route=[['battle','battle','battle'],[this.rng.pick(pool),'event',this.rng.pick(pool)],['elite','shop','battle'],[this.rng.pick(pool),'forge','heal'],['boss','boss','boss']];this.visited=[{row:0,col:1}];
   this.mutationId=this.floor<3?0:1+(this.floor-3)% (MUTATIONS.length-1);this.bounty=undefined;
  }
+ get setCounts(){return countSets(this.equipment);}
+ get attackSpeed(){return this.stats.speed*(1+this.overdrive);}
+ gearWeight(def:Gear['def']){return def.set&&this.foundFamilies.has(def.set)&&!this.foundGearIds.has(def.id)?1+FAMILY_BIAS:1;}
+ receiveGear(gear:Gear){this.loot.push(gear);this.foundGearIds.add(gear.def.id);if(gear.def.set)this.foundFamilies.add(gear.def.set);this.seen.add(gear.def.id);}
+ private rollGearDef(){const total=EQUIPMENT.reduce((n,g)=>n+this.gearWeight(g),0);let roll=this.rng.next()*total;for(const gear of EQUIPMENT){roll-=this.gearWeight(gear);if(roll<0)return gear;}return EQUIPMENT[EQUIPMENT.length-1];}
  get mutation(){return MUTATIONS[this.mutationId];}
  get bossId(){return bossIndex(this.floor);}
  takeBounty(id:string){if(this.bounty||!BOUNTIES.some(b=>b.id===id))return false;this.bounty={id,progress:0,claimed:false};this.revision++;return true;}
  bountyStep(id:string,n=1){if(this.bounty?.id===id&&!this.bounty.claimed){this.bounty.progress+=n;this.revision++;}}
- claimBounty(){const b=BOUNTIES.find(b=>b.id===this.bounty?.id);if(!b||!this.bounty||this.bounty.claimed||this.bounty.progress<b.goal)return false;this.bounty.claimed=true;if(b.reward==='gear'){this.loot.push(this.createGear(3));this.lootReturn=this.panel==='forge'?'forge':this.panel==='shop'?'shop':null;this.open('loot');}else if(b.reward==='gold')this.addGold(60+this.floor*8);else this.rerolls+=2;this.note(`完成悬赏：${b.name}`);this.revision++;return true;}
+ claimBounty(){const b=BOUNTIES.find(b=>b.id===this.bounty?.id);if(!b||!this.bounty||this.bounty.claimed||this.bounty.progress<b.goal)return false;this.bounty.claimed=true;if(b.reward==='gear'){this.receiveGear(this.createGear(3));this.lootReturn=this.panel==='forge'?'forge':this.panel==='shop'?'shop':null;this.open('loot');}else if(b.reward==='gold')this.addGold(60+this.floor*8);else this.rerolls+=2;this.note(`完成悬赏：${b.name}`);this.revision++;return true;}
  forgeCost(index:number,awaken=false){const w=this.weapons[index];return w?(awaken?120+this.floor*10:45+this.floor*8+(w.forged||0)*25):Infinity;}
  forgeWeapon(index:number,awaken=false){const w=this.weapons[index],cost=this.forgeCost(index,awaken);if(this.panel!=='forge'||!w||this.gold<cost|| (awaken?(w.level<5||!w.forged||w.awakened):(w.forged||0)>=3))return false;this.gold-=cost;if(awaken)w.awakened=true;else w.forged=(w.forged||0)+1;this.note(`${w.awakened?'觉醒':'锻造'} ${WEAPONS.find(x=>x.id===w.id)!.name}`);this.revision++;return true;}
- reforgeGear(slot:string){const old=this.equipment[slot],cost=65+this.floor*6;if(this.panel!=='forge'||!old||this.gold<cost)return false;this.gold-=cost;this.loot.push(this.createGear(old.quality,old.def));this.lootReturn='forge';this.open('loot');return true;}
+ reforgeGear(slot:string){const old=this.equipment[slot],cost=65+this.floor*6;if(this.panel!=='forge'||!old||this.gold<cost)return false;this.gold-=cost;this.receiveGear(this.createGear(old.quality,old.def));this.lootReturn='forge';this.open('loot');return true;}
  open(panel:Panel){this.panel=panel;this.revision++;}
  note(text:string){this.notices.unshift(text);this.notices.length=Math.min(7,this.notices.length);}
  power(){return this.stats.damage*(1+this.curse*this.stats.cursePower)*(1+Math.min(12,this.gold/100)*this.stats.goldPower)*(this.hp/this.stats.maxHp<.35?1+this.stats.lowDamage:1);}
  createGear(minQuality=0,chosenDef?:Gear['def']):Gear{
   const roll=this.rng.next()+this.stats.luck*.17+this.fortune*.12+this.floor*.014;
   const quality=Math.min(4,Math.max(minQuality,roll>.99?4:roll>.87?3:roll>.65?2:roll>.34?1:0));
-  const def=chosenDef||this.rng.pick(EQUIPMENT);const factor=1+quality*.3;const mods:Mods={};for(const[k,v]of Object.entries(def.mods))mods[k as keyof Stats]=v!*factor;
+  const def=chosenDef||this.rollGearDef();const factor=1+quality*.3;const mods:Mods={};for(const[k,v]of Object.entries(def.mods))mods[k as keyof Stats]=v!*factor;
   const affixes=this.rng.shuffle(AFFIXES).slice(0,quality===0?0:quality===4?3:quality>=2?2:1).map(a=>({name:a.name,mods:{...a.mods}}));
   for(const a of affixes)for(const[k,v]of Object.entries(a.mods))mods[k as keyof Stats]=(mods[k as keyof Stats]||0)+v!;
   const effects=def.effects.map(e=>({...e,amount:e.amount*factor}));
   if(quality>=3)effects.push(fxLegend(def.tag,quality));
   return{uid:this.uid++,def,quality,affixes,mods,effects};
  }
- equip(gear:Gear){this.equipment[gear.def.slot]=gear;this.seen.add(gear.def.id);this.recalculate();this.note(`装备 ${gear.def.name}`);this.revision++;}
+ equip(gear:Gear){this.foundGearIds.add(gear.def.id);if(gear.def.set)this.foundFamilies.add(gear.def.set);this.equipment[gear.def.slot]=gear;this.seen.add(gear.def.id);this.recalculate();this.note(`装备 ${gear.def.name}`);this.revision++;}
  chooseLoot(take:boolean){if(this.panel!=='loot')return;const gear=this.loot.shift();if(gear){if(take)this.equip(gear);else this.addGold(8+gear.quality*9);}this.open(null);if(!this.loot.length&&this.lootReturn){const panel=this.lootReturn;this.lootReturn=null;this.open(panel);}else this.checkPanels();}
  addWeapon(id:string,replace?:number){const own=this.weapons.find(w=>w.id===id);if(own)own.level=Math.min(5,own.level+1);else if(this.weapons.length<3)this.weapons.push({id,level:1,timer:.2,burst:0});else if(replace!==undefined)this.weapons[replace]={id,level:1,timer:.2,burst:0};else return false;this.seen.add(id);this.note(`取得 ${WEAPONS.find(w=>w.id===id)?.name}`);this.revision++;return true;}
  addPassive(id:string){const p=PASSIVES.find(p=>p.id===id);if(!p)return;this.passives[id]=Math.min(p.max,(this.passives[id]||0)+1);this.seen.add(id);this.recalculate();this.note(`领悟 ${p.name}`);this.revision++;}
@@ -107,7 +116,7 @@ export class Run {
  }
  refreshShop(){const cost=15+this.refreshes*10;if(this.gold<cost)return;this.gold-=cost;this.refreshes++;this.makeShop();}
  buy(index:number,replace?:number){const item=this.shop[index];if(!item||item.sold||this.gold<item.cost)return false;if(item.kind==='weapon'&&!this.addWeapon(item.id!,replace))return false;
-  this.gold-=item.cost;item.sold=true;if(item.kind==='gear'){this.loot.push(item.gear!);this.lootReturn='shop';this.open('loot');}if(item.kind==='passive')this.addPassive(item.id!);if(item.kind==='heal')this.heal(35);this.revision++;return true;
+  this.gold-=item.cost;item.sold=true;if(item.kind==='gear'){this.receiveGear(item.gear!);this.lootReturn='shop';this.open('loot');}if(item.kind==='passive')this.addPassive(item.id!);if(item.kind==='heal')this.heal(35);this.revision++;return true;
  }
  eventAction(o:EventOption,replace?:number){
   if(this.panel!=='event'&&this.panel!=='altar')return false;
@@ -116,12 +125,12 @@ export class Run {
   this.gold-=o.cost||0;this.hp-=o.blood||0;
   const randomPassive=()=>this.rng.pick(PASSIVES.filter(p=>(this.passives[p.id]||0)<p.max)).id;
   switch(o.op){
-   case'gear':this.loot.push(this.createGear(o.amount));if(o.amount===0)this.addGold(20);break;
+   case'gear':this.receiveGear(this.createGear(o.amount));if(o.amount===0)this.addGold(20);break;
    case'weapon':this.addWeapon(this.rng.pick(WEAPONS).id,replace);if(o.risk===1)this.baseCurse++;break;
    case'passive':this.addPassive(o.amount===2?'lucky':randomPassive());break;
    case'heal':this.heal(o.amount);break;
    case'gold':this.addGold(o.amount);if(o.risk&&this.rng.next()<o.risk){this.hp=Math.max(1,this.hp-18);this.note('暗藏机关：失去 18 生命');}break;
-   case'curse':this.baseCurse+=o.amount===3?2:1;if(o.amount===1)this.addPassive(randomPassive());else if(o.amount===4)this.addGold(70);else this.loot.push(this.createGear(o.amount===3?3:1));break;
+   case'curse':this.baseCurse+=o.amount===3?2:1;if(o.amount===1)this.addPassive(randomPassive());else if(o.amount===4)this.addGold(70);else this.receiveGear(this.createGear(o.amount===3?3:1));break;
    case'cleanse':this.baseCurse=Math.max(0,this.baseCurse-o.amount);if(!o.cost&&!o.blood)this.heal(18);break;
    case'upgrade':{const gear=this.rng.pick(Object.values(this.equipment));if(gear.quality<4){gear.quality++;for(const[k,v]of Object.entries(gear.mods))gear.mods[k as keyof Stats]=v!*1.18;gear.effects=gear.effects.map(e=>({...e,amount:e.amount*1.18}));}break;}
    case'gamble':if(this.rng.next()<.55){this.addGold(o.amount);this.note('赌赢了：金币入袋');}else this.note('赌输了：空空如也');break;
@@ -141,7 +150,7 @@ export class Run {
   const scale=floorValue(DIFFICULTY.enemyHealth,this.floor)*(1+this.row*DIFFICULTY.roomHealthStep)*(1+this.curse*.08)*this.mutation.health;
   const maxHp=boss>=0?BOSSES[boss].hp*floorValue(DIFFICULTY.bossHealth,this.floor)*(this.strongBoss?1.4:1)*(1+this.curse*.06):def.hp*scale*(elite?floorValue(DIFFICULTY.eliteHealth,this.floor):1);
   const affix=elite?this.rng.pick(ENEMY_AFFIXES):this.floor>1&&this.rng.next()<Math.min(.4,.12+(this.floor-2)*.025+this.curse*.01)?this.rng.pick(ENEMY_AFFIXES):'';
-  const e:Enemy={uid:this.uid++,def,x,y,hp:maxHp,maxHp,age:0,action:this.rng.range(1.4,3),flash:0,poison:0,poisonTime:0,burn:0,burnTime:0,bleed:0,bleedTime:0,ice:0,iceTime:0,frozen:0,snare:0,mark:0,markTime:0,tick:0,revived:false,elite,affix,barrier:boss<0&&this.mutation.id==='ward'?1:0,boss,phase:0,targetX:this.x,dead:false,entering:boss<0&&y<COMBAT_FEEL.enemyEntryLine};
+  const e:Enemy={uid:this.uid++,def,x,y,hp:maxHp,maxHp,age:0,action:this.rng.range(1.4,3),flash:0,poison:0,poisonTime:0,burn:0,burnTime:0,bleed:0,bleedTime:0,ice:0,iceTime:0,frozen:0,snare:0,mark:0,markTime:0,tick:0,revived:false,elite,affix,barrier:boss<0&&this.mutation.id==='ward'?1:0,boss,phase:0,targetX:this.x,dead:false,entering:boss<0&&y<COMBAT_FEEL.enemyEntryLine,doom:0,doomDamage:0};
   if(affix==='铁壁'){e.maxHp*=1.4;e.hp=e.maxHp;}if(this.enemies.length<130)this.enemies.push(e);else e.dead=true;this.seen.add(def.id);if(boss>=0)this.seen.add(BOSSES[boss].id);return e;
  }
  advance(realDt:number,input:number,targetX?:number){
@@ -152,7 +161,7 @@ export class Run {
  tick(dt:number,input:number,targetX?:number){
   dt=Math.min(dt,.05);for(const v of this.vfx)v.life-=dt;this.vfx=this.vfx.filter(v=>v.life>0);
   if(this.panel||this.phase!=='combat')return;
-  this.time+=dt;this.roomTime+=dt;this.skillCD=Math.max(0,this.skillCD-dt);this.invincible=Math.max(0,this.invincible-dt);this.comboTimer-=dt;if(this.comboTimer<=0)this.combo=0;
+  this.time+=dt;this.overdriveTime=Math.max(0,this.overdriveTime-dt);if(!this.overdriveTime)this.overdrive=0;this.roomTime+=dt;this.skillCD=Math.max(0,this.skillCD-dt);this.invincible=Math.max(0,this.invincible-dt);this.comboTimer-=dt;if(this.comboTimer<=0)this.combo=0;
   for(const[k,v]of this.effectCooldown){if(v<=dt)this.effectCooldown.delete(k);else this.effectCooldown.set(k,v-dt);}
   const movement=300*this.stats.move*dt;
   if(targetX!==undefined)this.x+=Math.max(-movement,Math.min(movement,targetX-this.x));else this.x+=input*movement;
@@ -165,27 +174,30 @@ export class Run {
    this.spawnTimer=Math.max(.38,1.6-this.floor*.09-this.roomTime*.008);
   }
   this.mutationTimer-=dt;if(this.mutationTimer<=0){this.mutationTimer=this.mutation.id==='rift'?6:5;if(this.mutation.id==='storm')for(let i=0;i<3;i++)this.enemyBullet(this.rng.range(40,W-40),25,Math.PI/2,170,10,'#d2db8f');if(this.mutation.id==='rift')this.hazards.push({x:this.x,y:PLAYER_Y,r:30,timer:1.5,life:1.85,damage:14,color:'#b899d9',kind:'line',fired:false});}
-  for(const own of this.weapons){own.timer-=dt;if(own.timer<=0){const weapon=WEAPONS.find(w=>w.id===own.id)!;this.fireWeapon(weapon,own.level);own.volleys=(own.volleys||0)+1;if(own.awakened&&own.volleys%4===0){this.fireWeapon(weapon,own.level);this.effect(this.x,PLAYER_Y-65,'text','觉醒重奏',weapon.color);}own.timer=weapon.interval/this.stats.speed*(weapon.charge?.95:1);}}
+  for(const own of this.weapons){own.timer-=dt;if(own.timer<=0){const weapon=WEAPONS.find(w=>w.id===own.id)!;this.fireWeapon(weapon,own.level);own.volleys=(own.volleys||0)+1;if(own.awakened&&own.volleys%4===0){this.fireWeapon(weapon,own.level);this.effect(this.x,PLAYER_Y-65,'text','觉醒重奏',weapon.color);}own.timer=weapon.interval/this.attackSpeed*(weapon.charge?.95:1);}}
   this.updateTurrets(dt);this.updateEnemies(dt);this.updateShots(dt);this.updateBullets(dt);this.updateHazards(dt);this.updateDrops(dt);
   if(this.hp<=0)return;
   this.enemies=this.enemies.filter(e=>!e.dead);
   if((this.room==='boss'&&!this.enemies.some(e=>e.boss>=0))||(this.room!=='boss'&&this.roomTime>=this.duration&&this.enemies.length===0))this.finishRoom();
   this.checkPanels();
  }
- private updateTurrets(dt:number){for(const t of this.turrets){t.life-=dt;t.timer-=dt;if(t.timer<=0){const target=this.nearest(t.x,t.y);if(target){this.launch(t.weapon,t.level,t.x,t.y,Math.atan2(target.y-t.y,target.x-t.x),true);t.timer=.35/this.stats.speed;}}}this.turrets=this.turrets.filter(t=>t.life>0);}
+ private updateTurrets(dt:number){for(const t of this.turrets){t.life-=dt;t.timer-=dt;if(t.timer<=0){const target=this.nearest(t.x,t.y);if(target){this.launch(t.weapon,t.level,t.x,t.y,Math.atan2(target.y-t.y,target.x-t.x),true);t.timer=.35/this.attackSpeed;}}}this.turrets=this.turrets.filter(t=>t.life>0);}
  fireWeapon(weapon:Weapon,level:number,originX=this.x,originY=PLAYER_Y){
   const count=Math.min(12,(weapon.count||1)+Math.floor(this.stats.projectiles));const extra=Math.floor(this.stats.projectiles);
   if(weapon.pattern==='turret'){if(this.turrets.length<6)this.turrets.push({x:originX,y:PLAYER_Y-35,weapon,level,life:7*this.stats.duration,timer:0});return;}
+  if(weapon.pattern==='drone'&&this.shots.filter(s=>s.active&&s.weapon.pattern==='drone').length>=6)return;
+  if(weapon.pattern==='wall'&&this.shots.filter(s=>s.active&&s.weapon.pattern==='wall').length>=8)return;
   if(weapon.pattern==='satellite'&&this.shots.filter(s=>s.active&&s.weapon.pattern==='satellite').length>=12)return;
   if(['gravity','seeds','tether'].includes(weapon.pattern)&&this.shots.filter(s=>s.active&&s.weapon.pattern===weapon.pattern).length>=16)return;
   for(let i=0;i<count;i++){
+   if(weapon.pattern==='drone'&&this.shots.filter(s=>s.active&&s.weapon.pattern==='drone').length>=6)break;
    let x=originX,y=originY,angle=-Math.PI/2;
    switch(weapon.pattern){
     case'fan':case'shotgun':angle+=(i-(count-1)/2)*(weapon.pattern==='shotgun'?.15:.16);break;
     case'aim':{const target=this.nearest(originX,originY);if(target)angle=Math.atan2(target.y-originY,target.x-originX)+(i-(count-1)/2)*.08;break;}
     case'cross':x+=i%2?-50:50;angle+=(i%2?-.2:.2);break;
     case'discus':angle+=(i%2?-.42:.42);break;
-    case'satellite':y=PLAYER_Y-170;break;
+    case'satellite':case'drone':y=PLAYER_Y-170;break;
     case'rain':{const target=this.rng.pick(this.enemies.filter(e=>!e.dead));x=target?target.x+this.rng.range(-25,25):this.rng.range(50,W-50);y=target?Math.max(25,target.y-130):40;angle=Math.PI/2;break;}
     case'mine':x=this.rng.range(80,W-80);y=this.rng.range(200,410);break;
     case'burst':y-=i*24;x+=(i%3-1)*9;break;
@@ -199,16 +211,37 @@ export class Run {
  launch(weapon:Weapon,level:number,x:number,y:number,angle:number,turret=false,child=false):Shot{
   const s=this.shotPool.pop()||{hits:new Set<number>()} as Shot;
   const own=this.weapons.find(w=>w.id===weapon.id),forged=own?.forged||0;
-  s.hits.clear();Object.assign(s,{active:true,uid:this.uid++,x,y,vx:Math.cos(angle)*weapon.speed*COMBAT_FEEL.playerShotSpeed,vy:Math.sin(angle)*weapon.speed*COMBAT_FEEL.playerShotSpeed,age:0,life:['gravity','seeds','tether','satellite'].includes(weapon.pattern)?6:weapon.returning?8:weapon.pattern==='mine'?8:4.5,damage:weapon.damage*(1+(level-1)*.28)*this.power()*(1+forged*.18)*(turret?this.stats.turretPower:1)*(weapon.returning?this.stats.returnPower:1),weapon,level,pierce:(weapon.pierce||0)+Math.floor(this.stats.pierce)+(forged>=2?1:0),bounce:(weapon.bounce||0)+Math.floor(this.stats.bounce),returning:!!weapon.returning,turned:false,turret,child,seed:this.rng.next()*Math.PI*2,lastHit:0});
-  s.anchorY=['gravity','seeds'].includes(weapon.pattern)?Math.max(105,Math.min(620,(this.nearest(x,y)?.y??410)+25)):undefined;
+  s.hits.clear();Object.assign(s,{active:true,uid:this.uid++,x,y,vx:Math.cos(angle)*weapon.speed*COMBAT_FEEL.playerShotSpeed,vy:Math.sin(angle)*weapon.speed*COMBAT_FEEL.playerShotSpeed,age:0,life:['wall','drone'].includes(weapon.pattern)?6*this.stats.duration:['gravity','seeds','tether','satellite'].includes(weapon.pattern)?6:weapon.returning?8:weapon.pattern==='mine'?8:4.5,damage:weapon.damage*(1+(level-1)*.28)*this.power()*(1+forged*.18)*(turret?this.stats.turretPower:1),weapon,level,pierce:(weapon.pierce||0)+Math.floor(this.stats.pierce)+(forged>=2?1:0),bounce:(weapon.bounce||0)+Math.floor(this.stats.bounce),returning:!!weapon.returning,turned:false,turret,child,seed:this.rng.next()*Math.PI*2,lastHit:0,stage:0});
+  s.anchorY=weapon.pattern==='wall'?Math.max(200,Math.min(650,(this.nearest(x,y)?.y??355)+80)):['gravity','seeds'].includes(weapon.pattern)?Math.max(105,Math.min(620,(this.nearest(x,y)?.y??410)+25)):undefined;
   if(this.shots.length<650)this.shots.push(s);else{s.active=false;this.shotPool.push(s);}return s;
+ }
+ private updateSpecialShot(s:Shot,dt:number){
+  const pattern=s.weapon.pattern;
+  if(pattern==='drone'){
+   const target=this.nearest(this.x,PLAYER_Y);s.x+=((target?.x??this.x)-s.x)*Math.min(1,dt*3);s.y+=(Math.min(PLAYER_Y-170,(target?.y??280)+140)-s.y)*Math.min(1,dt*2);
+   if(this.time-s.lastHit>.5){s.lastHit=this.time;const flame=WEAPONS.find(w=>w.id==='ember')!;const bolt=this.launch(flame,s.level,s.x,s.y-15,-Math.PI/2,true,true);bolt.damage=s.damage*this.stats.turretPower*.8;}
+   if(s.life<=0)s.active=false;return true;
+  }
+  if(pattern==='wall'&&s.y<=(s.anchorY??435)){
+   s.y=s.anchorY??435;s.vx=s.vy=0;
+   if(this.time-s.lastHit>.6){s.lastHit=this.time;for(const e of this.enemies)if(!e.dead&&Math.abs(e.x-s.x)<145*this.stats.area&&Math.abs(e.y-s.y)<40+e.def.radius){this.applyStatus(e,'ice',1,s.damage);e.snare=Math.max(e.snare,.7);this.damageEnemy(e,s.damage*.65);}}
+   if(s.life<=0)s.active=false;return true;
+  }
+  if(pattern==='fuse'&&!s.child&&s.stage<3&&s.age>=(s.stage+1)*.27){s.stage++;const mine=this.launch({...s.weapon,pattern:'mine',speed:0,explosive:85,pierce:0},s.level,s.x,s.y,-Math.PI/2,false,true);mine.damage=s.damage;mine.life=6;}
+  if(pattern==='razor'){
+   if(this.time-s.lastHit>.18){s.hits.clear();s.lastHit=this.time;}
+   if(s.age>=1.1){for(const angle of [-Math.PI/2-.25,-Math.PI/2+.25]){const child=this.launch(WEAPONS[0],s.level,s.x,s.y,angle,false,true);child.damage=s.damage*1.2;}s.active=false;return true;}
+  }
+  if(pattern==='guard')for(const b of this.bullets)if(b.active&&segmentDistance(b.x,b.y,s.x-s.vx*dt,s.y-s.vy*dt,s.x,s.y)<20){b.active=false;this.effect(b.x,b.y,'nova','','#a3d5e7',18);}
+  return false;
  }
  private updateShots(dt:number){
   const grid=new Map<number,Enemy[]>();for(const e of this.enemies){if(e.dead)continue;const key=Math.floor(e.x/64)+Math.floor(e.y/64)*20;const cell=grid.get(key)||[];cell.push(e);grid.set(key,cell);}
   for(const s of this.shots){
    if(!s.active)continue;s.age+=dt;s.life-=dt;
-   const oldX=s.x,oldY=s.y;
+   let oldX=s.x,oldY=s.y;
    const pattern=s.weapon.pattern;
+   if(this.updateSpecialShot(s,dt))continue;
    if(pattern==='mirror'&&!s.child&&s.age>=.45&&s.lastHit===0){s.lastHit=this.time;for(const angle of [-Math.PI/2-.3,-Math.PI/2+.3]){const copy=this.launch(s.weapon,s.level,s.x,s.y,angle,false,true);copy.damage=s.damage*.55;}}
    if(pattern==='satellite'){
     s.x=this.x+Math.cos(s.age*3.5+s.seed)*100;s.y=PLAYER_Y-145+Math.sin(s.age*3.5+s.seed)*65;
@@ -227,11 +260,12 @@ export class Run {
     }
     if(s.life<=0)s.active=false;continue;
    }
-   if(s.returning&&!s.turned&&(s.age>2.6||s.y<30)){s.turned=true;s.hits.clear();s.vy=Math.abs(s.vy);s.vx*=.5;}
+   if(s.returning&&!s.turned&&(s.age>2.6||s.y<30||pattern==='pendulum'&&s.y<PLAYER_Y-260)){s.turned=true;s.hits.clear();s.vy=Math.abs(s.vy);s.vx*=.5;}
    if(s.turned){const a=Math.atan2(PLAYER_Y-s.y,this.x-s.x);s.vx=Math.cos(a)*s.weapon.speed*COMBAT_FEEL.playerShotSpeed;s.vy=Math.sin(a)*s.weapon.speed*COMBAT_FEEL.playerShotSpeed;if(Math.hypot(s.x-this.x,s.y-PLAYER_Y)<23){s.active=false;this.trigger('return',undefined,s);if(s.weapon.id==='glaive')for(const d of this.drops)d.y=PLAYER_Y-50;continue;}}
    if(s.weapon.homing&&!s.turned){const target=this.nearest(s.x,s.y,s.hits);if(target){const a=Math.atan2(target.y-s.y,target.x-s.x);s.vx+=(Math.cos(a)*s.weapon.speed*COMBAT_FEEL.playerShotSpeed-s.vx)*Math.min(1,dt*7);s.vy+=(Math.sin(a)*s.weapon.speed*COMBAT_FEEL.playerShotSpeed-s.vy)*Math.min(1,dt*7);}}
    if(s.weapon.pattern==='wave'||s.weapon.pattern==='orbit')s.vx=Math.cos(s.age*5+s.seed)*135*COMBAT_FEEL.playerShotSpeed;
    s.x+=s.vx*dt;s.y+=s.vy*dt;
+   if(pattern==='portal'&&!s.stage&&s.y<520){s.stage=1;const fromX=s.x,fromY=s.y;s.x=W-s.x;s.y=Math.max(60,s.y-220);oldX=s.x;oldY=s.y;this.effect(fromX,fromY,'chain','折跃',s.weapon.color,0,s.x,s.y);}
    if(pattern==='discus'&&(s.x<14||s.x>W-14)){s.x=Math.max(14,Math.min(W-14,s.x));s.vx*=-1;s.damage*=1.12;s.hits.clear();this.effect(s.x,s.y,'nova','反壁',s.weapon.color,28);}
    if(s.bounce>0&&(s.x<14||s.x>W-14)){s.x=Math.max(14,Math.min(W-14,s.x));s.vx*=-1;s.bounce--;}
    if(s.life<=0||s.x<-40||s.x>W+40||s.y<-50||s.y>H+30){s.active=false;continue;}
@@ -239,7 +273,7 @@ export class Run {
    for(let gx=cx-1;gx<=cx+1;gx++)for(let gy=cy-1;gy<=cy+1;gy++){const cell=grid.get(gx+gy*20);if(cell)candidates.push(...cell);}
    for(const e of candidates){
     if(e.dead||(!s.active)||s.hits.has(e.uid))continue;
-    const radius=(e.boss>=0?38:e.def.radius)+(s.weapon.heavy?COMBAT_FEEL.heavyShotRadius:COMBAT_FEEL.playerShotRadius);
+    const radius=(e.boss>=0?38:e.def.radius)+(pattern==='tidal'?72*this.stats.area:s.weapon.heavy?COMBAT_FEEL.heavyShotRadius:COMBAT_FEEL.playerShotRadius);
     const distance=segmentDistance(e.x,e.y,oldX,oldY,s.x,s.y);
     if(distance>radius)continue;
     if(s.weapon.pattern==='mine'&&Math.hypot(e.x-s.x,e.y-s.y)>40)continue;
@@ -249,18 +283,25 @@ export class Run {
     if((e.def.behavior==='shield'&&e.age%3<1.3||e.barrier>0)&&s.pierce<=0){e.barrier=0;s.active=false;this.effect(e.x,e.y,'text','格挡','#97cce1');continue;}
     if(e.def.behavior==='reflect'&&s.pierce<=0&&this.rng.next()<.3)this.shootAtPlayer(e,160);
     let damage=s.damage;const d=PLAYER_Y-e.y;damage*=1+(d>300?(s.weapon.far||0)+this.stats.farPower:d<170?(s.weapon.close||0)+this.stats.closePower:0);
+    if(s.returning&&s.turned)damage*=this.stats.returnPower;
+    if(pattern==='hourglass')damage*=1+this.curse*.08;
     if(s.weapon.id==='coinblade')damage*=1+Math.min(12,this.gold/100)*.06;
     if(s.weapon.combo)damage*=1+Math.min(20,this.combo)*.025;
     const crit=this.rng.next()<this.stats.crit;if(crit)damage*=this.stats.critPower;
     this.applyStatus(e,s.weapon.status,1,s.damage);
     if(pattern==='net'){for(const target of this.enemies)if(!target.dead&&Math.hypot(target.x-e.x,target.y-e.y)<110*this.stats.area)target.snare=Math.max(target.snare,2.5*this.stats.duration);this.effect(e.x,e.y,'nova','捕获',s.weapon.color,110);}
     if(pattern==='harpoon'&&!s.turned){if(e.boss<0)e.y=Math.max(40,e.y-100);e.snare=Math.max(e.snare,.6);s.turned=true;s.hits.clear();}
+    if(pattern==='tidal'&&e.boss<0)e.y=Math.max(40,e.y-25);
+    if(pattern==='hourglass'){e.action=Math.min(Math.max(2.5,e.action),e.action+(e.boss>=0?.25:.8));e.snare=Math.max(e.snare,.8);}
+    if(pattern==='sigil'){e.doom=2*this.stats.duration;e.doomDamage=Math.max(e.doomDamage,s.damage*1.5);}
+    if(pattern==='leech'&&d<220&&this.time-s.lastHit>.3){s.lastHit=this.time;this.heal(e.mark>0?2:1);}
     if(e.boss<0&&e.hp/e.maxHp<Math.max(s.weapon.execute||0,this.stats.execute))damage=e.hp+100;
     this.damageEnemy(e,damage,crit,s,false);this.combo++;this.comboTimer=2;
     if(s.weapon.explosive)this.nova(e.x,e.y,s.weapon.explosive*this.stats.area,damage*.75,e.uid,s.weapon.status);
     if(s.weapon.split&&!s.child){for(let i=0;i<s.weapon.split;i++){const c=this.launch(WEAPONS[0],s.level,e.x,e.y,-Math.PI/2+(i-(s.weapon.split-1)/2)*.4,s.turret,true);c.damage=s.damage*.45;c.hits.add(e.uid);}}
     if(s.bounce>0){s.bounce--;const target=this.nearest(e.x,e.y,s.hits);if(target){const a=Math.atan2(target.y-e.y,target.x-e.x);s.vx=Math.cos(a)*s.weapon.speed*COMBAT_FEEL.playerShotSpeed;s.vy=Math.sin(a)*s.weapon.speed*COMBAT_FEEL.playerShotSpeed;}else{s.vx*=-1;}s.damage*=.92;}
-    else if(s.pierce>0)s.pierce--;else if(!s.returning&&pattern!=='satellite'&&!['gravity','seeds','tether'].includes(pattern))s.active=false;
+    else if(s.pierce>0)s.pierce--;else if(!s.returning&&pattern!=='satellite'&&!['gravity','seeds','tether','razor'].includes(pattern))s.active=false;
+    if(pattern==='relay'&&!s.turned&&s.hits.size>=3){s.turned=true;s.hits.clear();s.bounce=0;}
    }
   }
   const alive:Shot[]=[];for(const s of this.shots){if(s.active)alive.push(s);else this.shotPool.push(s);}this.shots=alive;
@@ -289,7 +330,7 @@ export class Run {
   e.dead=true;this.kills++;this.bountyStep('hunter');if(e.elite&&e.boss<0)this.bountyStep('breaker');this.effect(e.x,e.y,'death','',e.def.color,e.def.radius);this.trigger('kill',e,shot,shot?.damage||20*this.power());
   if(e.burn>0)this.nova(e.x,e.y,60,0,e.uid,'fire');
   const xp=e.boss>=0?150+this.floor*45:e.def.xp*(e.elite?2.5:1)*(1+Math.max(0,this.floor-8)*.07);this.drop('xp',e.x,e.y,xp);this.drop('gold',e.x+10,e.y,(e.boss>=0?100:this.rng.range(2,5)*(e.affix==='富饶'?3:1))*this.mutation.gold);
-  if(e.boss>=0){this.bossKills++;this.bossReward++;this.loot.push(this.createGear(Math.min(4,2+(this.strongBoss?2:0))));if(!this.enemies.some(a=>a.boss>=0&&!a.dead)){this.strongBoss=false;this.releaseAll();this.hazards=[];for(const a of this.enemies)if(a!==e)a.dead=true;}this.onSound?.('bosskill');}
+  if(e.boss>=0){this.bossKills++;this.bossReward++;this.receiveGear(this.createGear(Math.min(4,2+(this.strongBoss?2:0))));if(!this.enemies.some(a=>a.boss>=0&&!a.dead)){this.strongBoss=false;this.releaseAll();this.hazards=[];for(const a of this.enemies)if(a!==e)a.dead=true;}this.onSound?.('bosskill');}
   else if(e.elite||this.kills===1||this.rng.next()<.055+this.stats.luck*.025){const gear=this.createGear(e.elite?2:0);this.drop('gear',e.x,e.y,0,gear);}
   if(e.def.behavior==='split'&&this.enemies.length<130&&e.boss<0)for(let i=0;i<3;i++)this.spawnEnemy(ENEMIES[0],e.x+(i-1)*22,e.y);
   if(e.def.behavior==='bomb'&&e.boss<0){for(let i=0;i<6;i++)this.enemyBullet(e.x,e.y,i*Math.PI/3,120,9);}
@@ -297,6 +338,7 @@ export class Run {
  private updateEnemies(dt:number){
   for(const e of this.enemies){
    if(e.dead)continue;e.age+=dt;e.action-=dt;e.flash=Math.max(0,e.flash-dt);e.frozen=Math.max(0,e.frozen-dt);e.snare=Math.max(0,e.snare-dt);e.markTime=Math.max(0,e.markTime-dt);if(!e.markTime)e.mark=0;
+   if(e.doom>0){e.doom-=dt;if(e.doom<=0){this.effect(e.x,e.y,'nova','终刻','#d8b38d',55);this.damageEnemy(e,Math.min(e.maxHp*(e.boss>=0?.025:.2),e.doomDamage));e.doomDamage=0;}}if(e.dead)continue;
    e.poisonTime-=dt;e.burnTime-=dt;e.bleedTime-=dt;e.iceTime-=dt;if(e.poisonTime<=0)e.poison=0;if(e.burnTime<=0)e.burn=0;if(e.bleedTime<=0)e.bleed=0;if(e.iceTime<=0)e.ice=0;
    e.tick+=dt;if(e.tick>=.5){e.tick=0;const damage=(e.poison*3+e.burn*4+e.bleed*2.5)*this.stats.statusPower*this.power();if(damage>0)this.damageEnemy(e,damage);if(e.affix==='再生')e.hp=Math.min(e.maxHp,e.hp+e.maxHp*.008);}
    if(e.dead||e.frozen>0)continue;
@@ -372,7 +414,7 @@ export class Run {
   this.drops.push({uid:this.uid++,kind,x,y,value,gear,age:0});
  }
  private updateDrops(dt:number){for(const d of this.drops){d.age+=dt;d.y+=100*dt;const dist=Math.hypot(d.x-this.x,d.y-PLAYER_Y);if(dist<this.stats.magnet||d.y>H-30){const a=Math.atan2(PLAYER_Y-d.y,this.x-d.x);d.x+=Math.cos(a)*420*dt;d.y+=Math.sin(a)*420*dt;}if(Math.hypot(d.x-this.x,d.y-PLAYER_Y)<22||d.age>8){this.collect(d);d.age=-100;}}this.drops=this.drops.filter(d=>d.age>=0);}
- collect(d:Drop){if(d.kind==='xp')this.gainXp(d.value);else if(d.kind==='gold')this.addGold(d.value);else if(d.gear)this.loot.push(d.gear);}
+ collect(d:Drop){if(d.kind==='xp')this.gainXp(d.value);else if(d.kind==='gold')this.addGold(d.value);else if(d.gear)this.receiveGear(d.gear);}
  finishRoom(){this.phase='between';for(const d of this.drops)this.collect(d);this.drops=[];this.releaseAll();this.hazards=[];this.turrets=[];this.addGold(this.room==='elite'?35:15);this.shield=Math.min(this.stats.shieldMax,this.shield+6);this.note('房间已肃清');this.onSound?.('clear');this.checkPanels();}
  nearest(x:number,y:number,excluded?:Set<number>){let best:Enemy|undefined;let distance=Infinity;for(const e of this.enemies){if(e.dead||excluded?.has(e.uid))continue;const d=(e.x-x)**2+(e.y-y)**2;if(d<distance){distance=d;best=e;}}return best;}
  effect(x:number,y:number,kind:Vfx['kind'],text:string,color:string,radius=25,tx?:number,ty?:number){if(this.vfx.length>=180)return;this.vfx.push({x,y,kind,text,color,life:kind==='skill'?1.8:kind==='chain'?.2:.7,max:kind==='skill'?1.8:.7,radius,tx,ty});}
@@ -397,6 +439,12 @@ export class Run {
     case'orbit':{const w=WEAPONS.find(w=>w.id==='starward')!;const alive=this.shots.filter(s=>s.active&&s.weapon.pattern==='satellite').length;for(let i=0;i<Math.min(12-alive,Math.floor(n));i++)this.launch(w,1,this.x,PLAYER_Y-170,-Math.PI/2);break;}
     case'echo':{const own=this.weapons[0];if(own)for(let i=0;i<Math.min(3,Math.floor(n));i++)this.fireWeapon(WEAPONS.find(w=>w.id===own.id)!,own.level);break;}
     case'cull':if(enemy&&!enemy.dead){const stacks=enemy.poison+enemy.burn+enemy.bleed;if(stacks>0){enemy.poison=enemy.burn=enemy.bleed=0;this.damageEnemy(enemy,Math.min(enemy.maxHp*(enemy.boss>=0?.025:.12),stacks*12*this.stats.statusPower*this.power()*n));this.effect(x,y,'nova','消融','#b6d990',70);}}break;
+    case'bleed':if(enemy&&!enemy.dead)this.applyStatus(enemy,'bleed',n,damage);break;
+    case'snare':for(const target of this.enemies)if(!target.dead&&Math.hypot(target.x-x,target.y-y)<(radius||1))target.snare=Math.max(target.snare,Math.min(4,n*this.stats.duration));break;
+    case'doom':{const target=enemy&&!enemy.dead?enemy:this.nearest(x,y);if(target){target.doom=2*this.stats.duration;target.doomDamage=Math.max(target.doomDamage,damage*n);this.effect(target.x,target.y,'text','终刻','#d3b08c');}break;}
+    case'overdrive':this.overdrive=Math.min(.85,Math.max(this.overdrive,n));this.overdriveTime=4;this.effect(this.x,PLAYER_Y-40,'text','加速','#ddbf72');break;
+    case'transmute':if(enemy&&!enemy.dead){const count=Math.min(enemy.poison,Math.ceil(n));if(count>0){enemy.poison-=count;this.applyStatus(enemy,'fire',count,damage);}}break;
+    case'wardburst':{const spent=Math.min(this.shield,n*10);this.shield-=spent;if(spent>0)this.nova(this.x,PLAYER_Y-100,220*this.stats.area,spent*6*this.power());break;}
     case'bank':if(this.gold>=n){this.gold-=n;this.shield=Math.min(this.stats.shieldMax,this.shield+n*2);this.revision++;}break;
     case'cleanse':for(const b of this.bullets)if(Math.hypot(b.x-x,b.y-y)<(radius||1000))b.active=false;for(const target of this.enemies)if(target.boss<0&&Math.hypot(target.x-x,target.y-y)<(radius||1000)){target.barrier=0;target.snare=Math.max(target.snare,1);}this.effect(x,y,'nova','净空','#b9dbeb',200);break;
    }

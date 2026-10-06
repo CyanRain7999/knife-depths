@@ -8,6 +8,18 @@ const bat=[' xx          xx ',' xxxx      xxxx ',' xxxxxx  xxxxxx ','   xxxxxxxx
 const humanoid=['     xxxxxx     ','    xxxxxxxx    ','    xxexxexx    ','     xwwwwx     ','     xxxxxx     ','   cccccccccc   ','  ccccxxcccccc  ','  xcxxxxxxxxcx  ','   cccccccc     ','    cccccc      ','    xx  xx      ','    xx  xx      '];
 const bossPixels=['      cccc      ','   cccccccccc   ',' ccccxxxxcccccc ',' cccxxxxxxxxccc ',' ccxxexxexxxxcc ',' ccxxxxxxxxxxcc ','  cxxxwwxxxccc  ','   cccccccccc   ',' cccccccccccccc ','cccccxxxxxxccccc','cccxxxxxxxxxxccc','ccccxxxxxxxxcccc','  cccccccccccc  ','   ccc    ccc   ','  cccc    cccc  ','  xxxx    xxxx  '];
 const specialWeapons:Record<string,string[]>={
+ rampart:['     xxxxxx     ','    xxwwwwxx    ','    xwwwwwwx    ','    xwwxxwwx    ','    xwwxxwwx    ','     xwwwwx     ','      xxxx      '],
+ cometrope:['     xxx        ','    xxwxx       ','     xxx        ','      c         ','       c        ','      c         ','     c          '],
+ icebridge:['  x    x    x   ',' xxx  xxx  xxx  ','  xxxxxwxxxxx   ','   xxxxxxxxx    ','    xxxxxxx     ','      ccc       '],
+ firemoth:['  xx      xx    ',' xwwx xx xwwx   ',' xwwxxxxxxwwx   ','  xxxwwwwxxx    ','   xxxwwxxx     ','     xxxx       ','     x  x       '],
+ dynamitecord:['   xx   xx      ','   xwcccwx      ','   xx   xx      ','     c          ','      c         ','   xx c         ','   xwcc         ','   xx           '],
+ iongate:['      xx        ','     xwwx       ','    xwwwwx      ','     xwwx       ','      xx        ','    ccwwcc      ','      ww        ','      cc        '],
+ tidebow:[' x          x   ','  xx      xx    ','   xxxwwxxx     ','     xwwx       ','      ww        ','      cc        '],
+ pendulum:['       c        ','       c        ','       c        ','     xxxxx      ','    xxwwwxx     ','    xwwwwwx     ','    xxwwwxx     ','     xxxxx      '],
+ razorball:['     x    x     ','  x  xxxxxx x   ','   xxxwwxxxx    ','   xxwwwwxx     ','  xxxxwwxxx     ','   x xxxxxx  x  ','     x    x     '],
+ medicneedle:['      x         ','      x         ','     wxw        ','     xwx        ','     xwx        ','     wxw        ','      c         ','     ccc        '],
+ hexhour:['    xxxxxx      ','    xwwwwx      ','     xwwx       ','      xx        ','     xwwx       ','    xwwwwx      ','    xxxxxx      '],
+ reaperseal:['    xxxxx       ','   xwcccwx      ','   xcxwx cx     ','   xcwxwc x     ','   xwcccwx      ','    xxxxx       ','      w         ','     ccc        '],
  singularity:['      xxxx      ','    xx    xx    ','   x   cc   x   ','  x  cdddc   x  ','  x  dddddd  x  ','  x  cdddc   x  ','   x   cc   x   ','    xx    xx    ','      xxxx      '],
  silknet:['   x   x   x    ','    x x x x     ','   x x x x x    ','    x x x x     ','   x x x x x    ','    x x x x     ','     x x x      ','      xxx       ','       c        '],
  conduit:['       w        ','      wxw       ','     wxxxw      ','    wxwwwxw     ','     wxxxw      ','      wxw       ','       w        ','       c        '],

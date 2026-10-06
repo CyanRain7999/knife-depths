@@ -1,3 +1,4 @@
+import {SET_GEAR,setForTag} from './sets';
 import type { Hero, Weapon, Passive, EquipmentDef, EnemyDef, BossDef, DungeonEvent, Mods, Effect, Tag, Slot, Pattern, Behavior, EventOption } from './types';
 export const TAG_NAMES:Record<Tag,string> = {crit:'暴击',speed:'攻速',pierce:'穿透',bounce:'弹射',poison:'毒',ice:'冰',fire:'火',lightning:'雷',explosion:'爆炸',heavy:'重武器',return:'回旋',turret:'炮台',blood:'残血',shield:'护盾',gold:'金币',curse:'诅咒',luck:'幸运',control:'控制',summon:'护刃'};
 export const QUALITY = ['普通','精良','稀有','史诗','传说'];
@@ -298,3 +299,46 @@ EVENTS.push(
 export function regionName(floor:number){return REGIONS[(Math.max(1,floor)-1)%REGIONS.length]+(floor>8?' · '+(floor<=16?'镜界':floor<=24?'终界':`深界 ${Math.ceil(floor/8)-3}`):'');}
 export function bossIndex(floor:number){return (Math.max(1,floor)-1)%BOSSES.length;}
 export function bossPhaseName(index:number,phase:number){return BOSSES[index].phases[phase]||'极限异变 / 交错封锁';}
+
+WEAPONS.push(
+ w('rampart','返航盾刃','向上投出护盾圆刃，去程和返程都能消除接触的敌弹。','shield','guard',22,1.2,450,'#92c8d5',{returning:true,pierce:4}),
+ w('cometrope','弹索飞刃','在三个目标间接力弹射，第三次命中后返回手中，可二次命中。','bounce','relay',24,1.15,480,'#b6a0dc',{returning:true,bounce:2,pierce:2}),
+ w('icebridge','冰川栅栏','向上投出冰晶，在敌群下方筑起横向冰墙，周期叠冰和束缚。','ice','wall',20,3.1,460,'#98d8ed',{pierce:99,status:'ice'}),
+ w('firemoth','巡猎焰蛾','释放追随敌群的浮游焰蛾，每半秒向上射出点燃飞刃。','summon','drone',15,3.3,0,'#ecb17a',{pierce:99}),
+ w('dynamitecord','连环引线','上行时依次留下三枚爆雷；敌人靠近才会引爆，形成纵向陷阱。','explosion','fuse',20,1.8,380,'#df9d82',{pierce:1}),
+ w('iongate','折跃光枪','穿过中场后从对侧上方折跃出现，可攻击原路线之外的敌群。','pierce','portal',29,1.1,530,'#96b9ea',{pierce:4}),
+ w('tidebow','潮汐弧弓','投出宽幅波前，扫过一片敌人并将普通敌人推回上方。','control','tidal',25,1.65,390,'#7ec9bc',{pierce:10}),
+ w('pendulum','短索摆锤','向上伸出 260 像素后立即返程，近距离高伤并可接住触发回旋效果。','heavy','pendulum',44,1.15,520,'#c9aa85',{returning:true,heavy:true,pierce:6,close:.6}),
+ w('razorball','自转刀球','缓行刀球多次切割，随后碎成两枚快刃；连续命中擅长切开肉盾。','heavy','razor',13,1.6,220,'#bdc8cf',{pierce:99,heavy:true}),
+ w('medicneedle','采血针','命中近身敌人恢复 1 生命；目标有易伤标记时恢复 2 生命。','blood','leech',16,.65,550,'#e499aa',{pierce:1,close:.3}),
+ w('hexhour','迟暮沙漏','命中延缓目标的下一次行动并束缚；每层诅咒额外增伤 8%。','curse','hourglass',26,1.2,430,'#be9bcb',{pierce:2}),
+ w('reaperseal','终刻封印','命中留下两秒后爆发的印记，再次命中刷新；延迟爆发可触发击杀联动。','crit','sigil',19,.85,500,'#d0ac85',{pierce:2})
+);
+PASSIVES.push(
+ p('frostwind','霜风归航','返程命中时向附近敌人叠冰。','return',{},[fx('hit','ice',2,{condition:'return',radius:85,cooldown:.6})]),
+ p('forgeecho','轰鸣铁心','重武器暴击向周围造成震波。','heavy',{},[fx('crit','nova',.55,{condition:'heavy',radius:110,cooldown:.6})]),
+ p('emberswap','催化药剂','毒敌命中时将 2 层毒转为燃烧，不凭空增加异常层数。','poison',{},[fx('hit','transmute',2,{condition:'poisoned',chance:.3,cooldown:.7})]),
+ p('slowblood','倒刺绳结','命中被束缚敌人叠加流血。','control',{},[fx('hit','bleed',2,{condition:'snared',chance:.35,cooldown:.45})]),
+ p('glassvow','破镜血誓','残血暴击留下延迟爆发的终刻印记。','blood',{},[fx('crit','doom',.9,{condition:'low',cooldown:.8})]),
+ p('ironwill','逆境节奏','受伤后攻速 +25%，持续 4 秒，冷却 8 秒。','blood',{},[fx('hurt','overdrive',.25,{cooldown:8})]),
+ p('chainreward','接力呼吸','接住回旋武器缩短技能冷却 0.6 秒。','return',{},[fx('return','cooldown',.6,{cooldown:.6})]),
+ p('quiver','蓄势箭匣','施放技能后攻速 +35%，持续 4 秒。','speed',{},[fx('skill','overdrive',.35,{cooldown:6})]),
+ p('goldstorm','金线追击','持有至少 150 金币时，暴击追加一枚飞刀。','gold',{},[fx('crit','shot',.7,{condition:'rich',cooldown:.6})]),
+ p('shieldpulse','护盾裂变','技能消耗最多 10 护盾，在底线前引发爆炸；每层提高消耗和威力。','shield',{},[fx('skill','wardburst',1,{condition:'shielded',cooldown:5})]),
+ p('snarefield','底线藤阵','每 3 秒束缚底线附近敌人 1.2 秒。','control',{},[fx('second','snare',1.2,{radius:185,cooldown:3})]),
+ p('mossshroud','苔衣反制','受伤束缚靠近底线的敌人 2 秒。','shield',{},[fx('hurt','snare',2,{radius:230,cooldown:5})]),
+ p('crimsonmark','伤口坐标','命中带易伤标记的目标附加流血。','crit',{},[fx('hit','bleed',1,{condition:'marked',chance:.4,cooldown:.35})]),
+ p('twinprism','标记导电','暴击已标记的敌人引发电弧。','lightning',{},[fx('crit','chain',.65,{condition:'marked',radius:190,cooldown:.6})]),
+ p('coldinterest','冻结利息','成功冻结获得 2 金币，冷却 1 秒。','ice',{},[fx('freeze','gold',2,{cooldown:1})]),
+ p('returndoom','归刃预告','接住回旋武器给最近敌人留下终刻印记。','return',{},[fx('return','doom',1,{cooldown:1.5})]),
+ p('dronebrood','星巢孵化','技能召唤两枚护刃；提高异常时长使阵地更持久。','summon',{duration:.1},[fx('skill','orbit',2,{cooldown:7})]),
+ p('coilreserve','炮台后勤','炮台命中恢复 1 生命，冷却 1 秒。','turret',{},[fx('hit','heal',1,{condition:'turret',cooldown:1})]),
+ p('wardrecycling','冷凝循环','冻结敌人补充 4 护盾；护盾上限 +5。','ice',{shieldMax:5},[fx('freeze','shield',4,{cooldown:.8})]),
+ p('debtcontract','带咒收息','有诅咒时击杀恢复 1 生命；金币收益 +8%。','curse',{goldBonus:.08},[fx('kill','heal',1,{condition:'cursed',cooldown:1})]),
+ p('clearpath','扫阵口令','施放技能将底线附近普通敌人推回 80 像素。','control',{},[fx('skill','repel',80,{radius:320,cooldown:6})]),
+ p('sandscript','沙刻弱点','命中有 25% 概率附加 10% 易伤，持续 4 秒。','crit',{},[fx('hit','mark',.1,{chance:.25,cooldown:.5})]),
+ p('bombfuse','余火药引','燃烧敌人死亡引发爆炸；范围 +8%。','explosion',{area:.08},[fx('kill','nova',.55,{condition:'burning',radius:95,cooldown:.5})]),
+ p('towerfocus','破盾咒文','施放技能清除敌弹并剥除一次性格挡；每层诅咒增伤 +2%。','curse',{cursePower:.02},[fx('skill','cleanse',1,{cooldown:8})])
+);
+EQUIPMENT.push(...SET_GEAR);
+for(const gear of EQUIPMENT)gear.set??=setForTag(gear.tag);

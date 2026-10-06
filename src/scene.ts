@@ -3,6 +3,7 @@ import { Run, W, H, PLAYER_Y } from './engine';
 import { BOSSES, HEROES, QUALITY_COLORS, regionName } from './data';
 import { makeTextures, shade } from './art';
 import { COMBAT_FEEL } from './balance';
+import type {Shot} from './engine';
 export class DungeonScene extends Phaser.Scene {
  run?:Run; move=0; targetX?:number; onFrame?:()=>void; onSkill?:()=>void;
  private sprites=new Map<string,Phaser.GameObjects.Image>();private pool=new Map<string,Phaser.GameObjects.Image[]>();private floating=new Map<object,Phaser.GameObjects.Text>();private textPool:Phaser.GameObjects.Text[]=[];
@@ -46,6 +47,8 @@ export class DungeonScene extends Phaser.Scene {
   }
   for(const s of run.shots){if(!s.active)continue;const sprite=this.use(`s${s.uid}`,`weapon-${s.weapon.id}`,used);sprite.setPosition(s.x,s.y).setScale(s.weapon.heavy?COMBAT_FEEL.heavyShotScale:COMBAT_FEEL.playerShotScale).setRotation(s.weapon.heavy||s.returning?s.age*12:Math.atan2(s.vy,s.vx)+Math.PI/2).setAlpha(s.weapon.pattern==='mine'?.7:1);g.lineStyle(s.weapon.heavy?5:3,color(s.weapon.color),.4);g.lineBetween(s.x,s.y,s.x-s.vx*.045,s.y-s.vy*.045);if(s.weapon.pattern==='mine'){g.lineStyle(1,color(s.weapon.color),.35);g.strokeCircle(s.x,s.y,35);}}
   for(const s of run.shots)if(s.active&&['gravity','seeds','tether'].includes(s.weapon.pattern)&&s.age>1.35){g.lineStyle(2,color(s.weapon.color),.3+.15*Math.sin(run.time*5));g.strokeCircle(s.x,s.y,(s.weapon.pattern==='gravity'?145:105)*run.stats.area);if(s.weapon.pattern==='gravity'){g.fillStyle(0x332948,.45);g.fillCircle(s.x,s.y,25);for(let i=0;i<4;i++)g.strokeEllipse(s.x,s.y,55+i*12,30+i*8);}}
+  for(const s of run.shots)if(s.active)this.paintSpecialShot(s,g,run);
+  for(const e of run.enemies)if(!e.dead&&e.doom>0){g.lineStyle(2,0xe5c192,.8);g.strokeCircle(e.x+e.def.radius+7,e.y-10,6);g.lineBetween(e.x+e.def.radius+7,e.y-10,e.x+e.def.radius+7,e.y-14);}
   for(const b of run.bullets){const radius=COMBAT_FEEL.enemyBulletRadius;g.fillStyle(color(b.color),.24);g.fillCircle(b.x,b.y,radius+6);g.fillStyle(0x191d29,.8);g.fillCircle(b.x,b.y,radius+1);g.fillStyle(color(b.color));g.fillCircle(b.x,b.y,radius);g.fillStyle(0xfff0cb);g.fillRect(b.x-2,b.y-2,4,4);}
   for(const d of run.drops){const sprite=this.use(`d${d.uid}`,d.kind==='gear'?'gear':d.kind,used);sprite.setPosition(d.x,d.y+Math.sin(d.age*5)*2).setScale(d.kind==='gear'?2.5:1.6);if(d.kind==='gear'){const c=color(QUALITY_COLORS[d.gear!.quality]);sprite.setTint(c);g.fillStyle(c,.06);g.fillRect(d.x-9,d.y-90,18,90);g.fillStyle(c,.13);g.fillRect(d.x-3,d.y-110,6,110);g.lineStyle(1,c,.6);g.strokeEllipse(d.x,d.y+14,30,9);}}
   const effects=new Set<object>();for(const v of run.vfx){const alpha=v.life/v.max;
@@ -57,6 +60,15 @@ export class DungeonScene extends Phaser.Scene {
   for(const[key,sprite]of this.sprites){if(!used.has(key)){sprite.setVisible(false);this.sprites.delete(key);const list=this.pool.get(sprite.texture.key)||[];list.push(sprite);this.pool.set(sprite.texture.key,list);}}
   for(const[v,text]of this.floating){if(!effects.has(v)){text.setVisible(false);this.floating.delete(v);this.textPool.push(text);}}
   this.onFrame?.();
+ }
+ private paintSpecialShot(s:Shot,g:Phaser.GameObjects.Graphics,run:Run){
+  const c=color(s.weapon.color);g.lineStyle(2,c,.7);
+  if(s.weapon.pattern==='wall'&&s.vy===0){const radius=145*run.stats.area;g.fillStyle(c,.12);g.fillRect(s.x-radius,s.y-25,radius*2,50);g.lineBetween(s.x-radius,s.y,s.x+radius,s.y);for(let i=-3;i<=3;i++)g.strokeTriangle(s.x+i*35-9,s.y+13,s.x+i*35+9,s.y+13,s.x+i*35,s.y-17);}
+  if(s.weapon.pattern==='tidal')g.strokeEllipse(s.x,s.y,144*run.stats.area,26);
+  if(s.weapon.pattern==='pendulum'||s.weapon.pattern==='relay'){g.lineStyle(1,c,.45);g.lineBetween(run.x,PLAYER_Y,s.x,s.y);}
+  if(s.weapon.pattern==='guard'){g.fillStyle(c,.1);g.fillCircle(s.x,s.y,23);g.strokeCircle(s.x,s.y,23);}
+  if(s.weapon.pattern==='portal'){g.strokeEllipse(s.x,s.y,30,14);g.strokeEllipse(s.x,s.y,19,28);}
+  if(s.weapon.pattern==='drone'){g.fillStyle(c,.12);g.fillCircle(s.x,s.y,25);g.lineBetween(s.x-22,s.y-4,s.x-10,s.y-14);g.lineBetween(s.x+10,s.y-14,s.x+22,s.y-4);}
  }
  private use(key:string,texture:string,used:Set<string>){used.add(key);let sprite=this.sprites.get(key);if(!sprite){const list=this.pool.get(texture);sprite=list?.pop()||this.add.image(0,0,texture);sprite.setVisible(true).setDepth(5);this.sprites.set(key,sprite);}return sprite;}
 }
