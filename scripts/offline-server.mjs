@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 const root=resolve('dist'),prefix='/knife-depths/';
-const mime={'.html':'text/html; charset=utf-8','.js':'application/javascript','.css':'text/css','.png':'image/png','.webmanifest':'application/manifest+json'};
+const mime={'.html':'text/html; charset=utf-8','.js':'application/javascript','.css':'text/css','.png':'image/png','.svg':'image/svg+xml','.webmanifest':'application/manifest+json'};
 const server=createServer(async(req,res)=>{
  if(req.url==='/__stop_verification'){res.end('offline verification: server stopped');server.close(()=>process.exit(0));server.closeAllConnections();return;}
  if(!req.url?.startsWith(prefix)){res.writeHead(302,{Location:prefix});res.end();return;}

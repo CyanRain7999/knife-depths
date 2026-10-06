@@ -1,5 +1,5 @@
 import type { Hero, Weapon, Passive, EquipmentDef, EnemyDef, BossDef, DungeonEvent, Mods, Effect, Tag, Slot, Pattern, Behavior, EventOption } from './types';
-export const TAG_NAMES:Record<Tag,string> = {crit:'暴击',speed:'攻速',pierce:'穿透',bounce:'弹射',poison:'毒',ice:'冰',fire:'火',lightning:'雷',explosion:'爆炸',heavy:'重武器',return:'回旋',turret:'炮台',blood:'残血',shield:'护盾',gold:'金币',curse:'诅咒',luck:'幸运'};
+export const TAG_NAMES:Record<Tag,string> = {crit:'暴击',speed:'攻速',pierce:'穿透',bounce:'弹射',poison:'毒',ice:'冰',fire:'火',lightning:'雷',explosion:'爆炸',heavy:'重武器',return:'回旋',turret:'炮台',blood:'残血',shield:'护盾',gold:'金币',curse:'诅咒',luck:'幸运',control:'控制',summon:'护刃'};
 export const QUALITY = ['普通','精良','稀有','史诗','传说'];
 export const QUALITY_COLORS = ['#a0a5b3','#a2db74','#6cbefa','#bb91fa','#ffcc71'];
 export const SLOT_NAMES:Record<Slot,string> = {head:'头部',body:'护甲',boots:'足部',charm:'饰物'};
@@ -257,3 +257,44 @@ export const EVENTS:DungeonEvent[] = [
  ev('cleanser','除咒烛台','蜡泪落下，空气中的低语短暂消失。',[o('点亮烛火','支付 45 金币，消除 2 诅咒。','cleanse',2,{cost:45}),o('握住烛芯','失去 12 生命，消除 1 诅咒。','cleanse',1,{blood:12})]),
  ev('vault','密封宝匣','锁孔像一只闭着的眼。它在等代价。',[o('用金钥匙打开','支付 75 金币，获得传说装备。','gear',4,{cost:75}),o('用血开锁','失去 28 生命，获得史诗装备。','gear',3,{blood:28})])
 ];
+
+// Expansion content uses its own trajectories and trigger operations.
+WEAPONS.push(
+ w('singularity','小型黑洞','缓慢飞至中场，持续吸拢附近敌人并脉冲伤害；Boss 只受伤害。','control','gravity',28,2.8,260,'#a38be8',{pierce:99}),
+ w('silknet','银丝捕网','命中张开捕网，束缚周围敌人 2.5 秒，使其移速降低 65%。','control','net',18,1.1,420,'#82c9bd'),
+ w('conduit','棱镜导线','悬停棱镜连接两个目标，导线同时伤害穿过连线的敌人。','lightning','tether',24,2.4,450,'#e5d991',{pierce:99}),
+ w('starward','环星护刃','投出 3 枚护刃在底线上方环绕，反复伤敌并抵消接触的敌弹。','summon','satellite',16,2.2,0,'#9bcfe5',{count:3,pierce:99}),
+ w('glassknife','镜像匕首','出手后延迟映出两枚斜向镜像，原刃继续向上穿透。','crit','mirror',21,.9,510,'#d0b8ef',{pierce:2}),
+ w('anchor','逆流鱼叉','刺中后将普通敌人拉回上方 100 像素，鱼叉随即返程。','return','harpoon',38,1.35,520,'#9fbec8',{returning:true,heavy:true,pierce:1}),
+ w('wallring','反壁飞盘','双盘沿斜线前进，碰到侧壁会反弹并增伤 12%，不锁定敌人。','bounce','discus',19,.95,420,'#ebb985',{count:2,pierce:8}),
+ w('sporeseed','荆棘孢子','飞到中场扎根，周期叠毒并束缚附近敌人，持续 6 秒。','poison','seeds',18,2.6,340,'#a2cc8c',{pierce:99,status:'poison'})
+);
+PASSIVES.push(
+ p('hexmark','破甲符','暴击标记目标，4 秒内受到的伤害增加 18%。','crit',{},[fx('crit','mark',.18,{cooldown:.4})]),
+ p('backpush','稳固阵线','重武器命中将普通敌人向上击退 24 像素。','heavy',{},[fx('hit','repel',24,{condition:'heavy',cooldown:.4,radius:65})]),
+ p('rootmark','青藤烙印','命中被束缚的敌人附加 20% 易伤。','control',{},[fx('hit','mark',.2,{condition:'snared',cooldown:.35})]),
+ p('netshield','捕网保险','击杀被束缚的敌人恢复 4 护盾。','shield',{},[fx('kill','shield',4,{condition:'snared',cooldown:.3})]),
+ p('orbitalcraft','折射操控','施放技能部署 3 枚环星护刃。','summon',{},[fx('skill','orbit',3,{cooldown:5})]),
+ p('resonance','共鸣回响','技能会重放第一武器的一轮攻击。','speed',{},[fx('skill','echo',1,{cooldown:2})]),
+ p('dissolution','灼毒消融','命中中毒敌人有 12% 概率消耗异常层数，造成异常爆发。','poison',{},[fx('hit','cull',1,{condition:'poisoned',chance:.12,cooldown:.6})]),
+ p('markhunt','猎杀印记','被标记的敌人死亡时爆炸，伤害周围敌人。','explosion',{},[fx('kill','nova',.8,{condition:'marked',radius:110,cooldown:.5})]),
+ p('clearair','净空屏障','施放技能清除敌弹与普通怪的一次性格挡。','shield',{},[fx('skill','cleanse',1,{radius:1000,cooldown:8})]),
+ p('coinwall','碎金壁垒','持有至少 150 金时，受伤花费 12 金恢复 24 护盾。','gold',{},[fx('hurt','bank',12,{condition:'rich',cooldown:2})]),
+ p('frosthook','霜钩回流','冻结时击退周围普通敌人 45 像素。','ice',{},[fx('freeze','repel',45,{radius:160,cooldown:.6})]),
+ p('returnstars','归途群星','接住回旋武器时部署一枚环星护刃。','return',{},[fx('return','orbit',1,{cooldown:2})]),
+ p('sporeweave','孢子蔓延','被束缚的敌人死亡后向周围散播 3 层毒。','poison',{},[fx('kill','poison',3,{condition:'snared',radius:140,cooldown:.4})]),
+ p('suppression','压制节奏','命中被束缚的敌人使技能冷却缩短 0.4 秒。','control',{},[fx('hit','cooldown',.4,{condition:'snared',cooldown:.4})]),
+ p('lastwind','逆风背水','残血受伤时，将靠近底线的普通敌人击退 100 像素。','blood',{},[fx('hurt','repel',100,{condition:'low',radius:360,cooldown:3})]),
+ p('returnmark','借势回旋','回旋武器命中附加 16% 易伤。','return',{},[fx('hit','mark',.16,{condition:'return',cooldown:.4})]),
+ p('towerwill','登塔意志','伤害 +4%，生命上限 +2。可持续叠加，支撑极深层构筑。','heavy',{damage:.04,maxHp:2},[],999),
+ p('towerbreath','长夜呼吸','护盾上限 +3，异常伤害 +3%。可持续叠加。','shield',{shieldMax:3,statusPower:.03},[],999)
+);
+EVENTS.push(
+ ev('weaver','银丝织者','织者愿意把敌人的脚步编进你的命运。',[o('学习织网','支付 35 金币获得随机被动。','passive',1,{cost:35}),o('收下一袋孢子','失去 15 生命，获得随机武器。','weapon',1,{blood:15}),o('拿走手工报酬','获得 30 金币。','gold',30)]),
+ ev('mirrorwell','镜井','井中的你，多扔出了一把刀。',[o('借用倒影','支付 65 金币，获得随机武器。','weapon',1,{cost:65}),o('打碎镜面','获得 1 诅咒和随机被动。','curse',1),o('离开前洗伤口','回复 20 生命。','heal',20)]),
+ ev('stargazer','星轨观测台','群星不再遥远，光落在你肩上。',[o('记录星图','支付 45 金币获得 2 次重选。','reroll',2,{cost:45}),o('收下星铁','失去 20 生命获得史诗装备。','gear',3,{blood:20}),o('在星光里休息','回复 25 生命。','heal',25)]),
+ ev('deepdebt','深层债券','商人把利息写在一张燃烧的纸上。',[o('提前领取分红','获得 70 金币与 1 诅咒。','curse',4),o('兑付安全债券','支付 50 金币获得稀有装备。','gear',2,{cost:50}),o('抵押旧伤','生命上限 -8，伤害 +30%。','sacrifice',8)])
+);
+export function regionName(floor:number){return REGIONS[(Math.max(1,floor)-1)%REGIONS.length]+(floor>8?' · '+(floor<=16?'镜界':floor<=24?'终界':`深界 ${Math.ceil(floor/8)-3}`):'');}
+export function bossIndex(floor:number){return (Math.max(1,floor)-1)%BOSSES.length;}
+export function bossPhaseName(index:number,phase:number){return BOSSES[index].phases[phase]||'极限异变 / 交错封锁';}
