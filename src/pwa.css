@@ -1,0 +1,12 @@
+.camp-update{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 1px;font-size:10px;color:#788675}
+.camp-update button{min-height:36px;padding:6px 10px;font-size:11px}
+.app-update-version{overflow-wrap:anywhere;color:#87937e;font-size:10px}
+.app-update-setting{align-items:flex-start}
+.app-update-setting>div{flex:1;min-width:0}
+.app-update-status{font-size:11px;line-height:1.8;color:#788675;margin:6px 0}
+[data-app-update].update-available{background:#e0efcd;border-color:#9bbb7c;color:#537e43}
+#pwa-banner:not(:empty){max-width:320px;padding:14px;color:#627951;line-height:1.7}
+#pwa-banner strong{display:block;font-size:13px}
+#pwa-banner button{min-height:38px;padding:7px 12px;font-size:12px}
+body[data-screen="run"] #pwa-banner{display:none}
+@media(max-width:500px){#pwa-banner{left:14px;right:14px;bottom:calc(18px + env(safe-area-inset-bottom));max-width:none!important}.app-update-setting{flex-wrap:wrap}.camp-update{gap:6px}}
