@@ -26,7 +26,7 @@ describe('game speed',()=>{
  });
  it('freezes at every blocking panel and stops the remaining substeps on an upgrade',()=>{
   const r=make();r.meta.settings.gameSpeed=5;
-  for(const panel of ['pause','level','loot','shop','event','map','bossintro'] as const){
+  for(const panel of ['pause','level','shop','event','map','bossintro'] as const){
    r.open(panel);const before=[r.time,r.x,r.skillCD,r.roomTime];r.advance(.05,1);
    expect([r.time,r.x,r.skillCD,r.roomTime]).toEqual(before);
   }

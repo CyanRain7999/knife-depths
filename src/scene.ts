@@ -5,7 +5,7 @@ import { makeTextures, shade } from './art';
 import { COMBAT_FEEL } from './balance';
 import type {Shot} from './engine';
 export class DungeonScene extends Phaser.Scene {
- run?:Run; move=0; targetX?:number; onFrame?:()=>void; onSkill?:()=>void;
+ run?:Run; move=0; targetX?:number; onFrame?:()=>void; onSkill?:()=>void; onPause?:()=>void;
  private sprites=new Map<string,Phaser.GameObjects.Image>();private pool=new Map<string,Phaser.GameObjects.Image[]>();private floating=new Map<object,Phaser.GameObjects.Text>();private textPool:Phaser.GameObjects.Text[]=[];
  private dynamic!:Phaser.GameObjects.Graphics;private player!:Phaser.GameObjects.Image;private shadow!:Phaser.GameObjects.Ellipse;private background!:Phaser.GameObjects.Graphics;private keys?:Record<string,Phaser.Input.Keyboard.Key>;private lastFloor=0;private lastInv=0;
  constructor(){super('dungeon');}
@@ -13,7 +13,7 @@ export class DungeonScene extends Phaser.Scene {
  create(){
   makeTextures(this);this.background=this.add.graphics();this.dynamic=this.add.graphics();this.shadow=this.add.ellipse(W/2,PLAYER_Y+36,60,14,0x000000,.4);this.player=this.add.image(W/2,PLAYER_Y,'hero-knife').setScale(2).setDepth(10);
   this.keys=this.input.keyboard?.addKeys('A,D,LEFT,RIGHT,SPACE,ESC,P') as Record<string,Phaser.Input.Keyboard.Key>;
-  this.input.keyboard?.on('keydown-SPACE',()=>this.onSkill?.());this.input.keyboard?.on('keydown-ESC',()=>this.run?.pause());this.input.keyboard?.on('keydown-P',()=>this.run?.pause());
+  this.input.keyboard?.on('keydown-SPACE',()=>this.onSkill?.());this.input.keyboard?.on('keydown-ESC',()=>this.onPause?.());this.input.keyboard?.on('keydown-P',()=>this.onPause?.());
   this.input.on('pointerdown',(p:Phaser.Input.Pointer)=>{if(this.run?.phase==='combat'&&!this.run.panel)this.targetX=p.x;});this.input.on('pointermove',(p:Phaser.Input.Pointer)=>{if(p.isDown&&this.run?.phase==='combat'&&!this.run.panel)this.targetX=p.x;});
   this.paintBackground(1);
  }

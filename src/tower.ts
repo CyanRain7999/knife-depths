@@ -1,5 +1,6 @@
-export const TOWER_LIMIT=24;
-export const MODES={tower:{name:'登塔远征',desc:'24 层 · 三章守层者'},endless:{name:'无尽深渊',desc:'无限层 · 极限构筑'},daily:{name:'每日试炼',desc:'同日种子相同 · 24 层'}} as const;
+export const TOWER_LIMIT=12;
+export const MODES={tower:{name:'登塔远征',desc:'12 层 · 三章守层者'},endless:{name:'无尽深渊',desc:'无限层 · 极限构筑'},daily:{name:'每日试炼',desc:'同日种子相同 · 12 层'}} as const;
+export const isDualBossFloor=(floor:number)=>floor>=TOWER_LIMIT&&(floor-TOWER_LIMIT)%8===0;
 export const MUTATIONS=[
  {id:'calm',name:'平静',desc:'本层没有额外异变。',health:1,speed:1,gold:1},
  {id:'rush',name:'狂奔之潮',desc:'敌人移速 +25%，生命 -15%，金币 +15%。',health:.85,speed:1.25,gold:1.15},

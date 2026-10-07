@@ -1,4 +1,6 @@
 import {SET_GEAR,setForTag} from './sets';
+import {PASSIVE_MAX_STACKS} from './balance';
+import {TOWER_LIMIT} from './tower';
 import type { Hero, Weapon, Passive, EquipmentDef, EnemyDef, BossDef, DungeonEvent, Mods, Effect, Tag, Slot, Pattern, Behavior, EventOption } from './types';
 export const TAG_NAMES:Record<Tag,string> = {crit:'暴击',speed:'攻速',pierce:'穿透',bounce:'弹射',poison:'毒',ice:'冰',fire:'火',lightning:'雷',explosion:'爆炸',heavy:'重武器',return:'回旋',turret:'炮台',blood:'残血',shield:'护盾',gold:'金币',curse:'诅咒',luck:'幸运',control:'控制',summon:'护刃'};
 export const QUALITY = ['普通','精良','稀有','史诗','传说'];
@@ -58,7 +60,7 @@ export const WEAPONS:Weapon[] = [
  w('glaive','猎魂轮','锁定追踪、返回、穿透，返程吸引拾取物。','return','aim',25,1.1,430,'#ceafe9',{homing:true,returning:true,pierce:2}),
  w('comet','彗星连弩','短暂蓄力后连射 6 枚远距增伤箭。','speed','burst',9,1.1,650,'#d1e8ad',{count:6,far:.45,charge:true})
 ];
-const p=(id:string,name:string,desc:string,tag:Tag,mods:Mods={},effects:Effect[]=[],max=3):Passive=>({id,name,desc,tag,mods,effects,max});
+const p=(id:string,name:string,desc:string,tag:Tag,mods:Mods={},effects:Effect[]=[]):Passive=>({id,name,desc,tag,mods,effects,max:PASSIVE_MAX_STACKS});
 export const PASSIVES:Passive[] = [
  p('keen','鹰眼','暴击率 +8%。','crit',{crit:.08}),
  p('cruel','残酷美学','暴击倍率 +40%。','crit',{critPower:.4}),
@@ -287,8 +289,8 @@ PASSIVES.push(
  p('suppression','压制节奏','命中被束缚的敌人使技能冷却缩短 0.4 秒。','control',{},[fx('hit','cooldown',.4,{condition:'snared',cooldown:.4})]),
  p('lastwind','逆风背水','残血受伤时，将靠近底线的普通敌人击退 100 像素。','blood',{},[fx('hurt','repel',100,{condition:'low',radius:360,cooldown:3})]),
  p('returnmark','借势回旋','回旋武器命中附加 16% 易伤。','return',{},[fx('hit','mark',.16,{condition:'return',cooldown:.4})]),
- p('towerwill','登塔意志','伤害 +4%，生命上限 +2。可持续叠加，支撑极深层构筑。','heavy',{damage:.04,maxHp:2},[],999),
- p('towerbreath','长夜呼吸','护盾上限 +3，异常伤害 +3%。可持续叠加。','shield',{shieldMax:3,statusPower:.03},[],999)
+ p('towerwill','登塔意志','伤害 +4%，生命上限 +2。最多 4 层。','heavy',{damage:.04,maxHp:2},[]),
+ p('towerbreath','长夜呼吸','护盾上限 +3，异常伤害 +3%。最多 4 层。','shield',{shieldMax:3,statusPower:.03},[])
 );
 EVENTS.push(
  ev('weaver','银丝织者','织者愿意把敌人的脚步编进你的命运。',[o('学习织网','支付 35 金币获得随机被动。','passive',1,{cost:35}),o('收下一袋孢子','失去 15 生命，获得随机武器。','weapon',1,{blood:15}),o('拿走手工报酬','获得 30 金币。','gold',30)]),
@@ -296,8 +298,8 @@ EVENTS.push(
  ev('stargazer','星轨观测台','群星不再遥远，光落在你肩上。',[o('记录星图','支付 45 金币获得 2 次重选。','reroll',2,{cost:45}),o('收下星铁','失去 20 生命获得史诗装备。','gear',3,{blood:20}),o('在星光里休息','回复 25 生命。','heal',25)]),
  ev('deepdebt','深层债券','商人把利息写在一张燃烧的纸上。',[o('提前领取分红','获得 70 金币与 1 诅咒。','curse',4),o('兑付安全债券','支付 50 金币获得稀有装备。','gear',2,{cost:50}),o('抵押旧伤','生命上限 -8，伤害 +30%。','sacrifice',8)])
 );
-export function regionName(floor:number){return REGIONS[(Math.max(1,floor)-1)%REGIONS.length]+(floor>8?' · '+(floor<=16?'镜界':floor<=24?'终界':`深界 ${Math.ceil(floor/8)-3}`):'');}
-export function bossIndex(floor:number){return (Math.max(1,floor)-1)%BOSSES.length;}
+export function regionName(floor:number){return REGIONS[(Math.max(1,floor)-1)%REGIONS.length]+(floor>8?' · '+(floor<=TOWER_LIMIT?'终界':`深界 ${Math.ceil((floor-TOWER_LIMIT)/8)}`):'');}
+export function bossIndex(floor:number){return floor>=TOWER_LIMIT&&(floor-TOWER_LIMIT)%8===0?BOSSES.length-1:(Math.max(1,floor)-1)%BOSSES.length;}
 export function bossPhaseName(index:number,phase:number){return BOSSES[index].phases[phase]||'极限异变 / 交错封锁';}
 
 WEAPONS.push(

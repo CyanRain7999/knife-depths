@@ -1,12 +1,13 @@
 import {SETS,FAMILY_BIAS,countSets} from './sets';
+import {salvageValue} from './inventory';
 import {homeBonuses,freshHome} from './home';
 import { HEROES, WEAPONS, PASSIVES, EQUIPMENT, AFFIXES, ENEMIES, BOSSES, ENEMY_AFFIXES, bossIndex } from './data';
 import type { Hero, Weapon, Passive, Stats, Mods, Effect, EnemyDef, Gear, Save, NodeType, Hook, EventOption } from './types';
-import { DIFFICULTY, COMBAT_FEEL, floorValue } from './balance';
-import { BOUNTIES, MUTATIONS, TOWER_LIMIT } from './tower';
+import { DIFFICULTY, COMBAT_FEEL, floorValue, experienceForLevel } from './balance';
+import { BOUNTIES, MUTATIONS, TOWER_LIMIT, isDualBossFloor } from './tower';
 import type { GameMode } from './types';
 export const W=720, H=960, PLAYER_Y=884;
-export type Panel = 'level'|'loot'|'clear'|'map'|'shop'|'event'|'chest'|'altar'|'heal'|'bossintro'|'pause'|'forge'|null;
+export type Panel = 'level'|'clear'|'map'|'shop'|'event'|'chest'|'altar'|'heal'|'bossintro'|'pause'|'forge'|null;
 export type Enemy = { uid:number; def:EnemyDef; x:number; y:number; hp:number; maxHp:number; age:number; action:number; flash:number; poison:number; poisonTime:number; burn:number; burnTime:number; bleed:number; bleedTime:number; ice:number; iceTime:number; frozen:number; snare:number; mark:number; markTime:number; tick:number; revived:boolean; elite:boolean; affix:string; barrier:number; boss:number; phase:number; targetX:number; dead:boolean; entering:boolean; doom:number; doomDamage:number };
 export type Shot = { active:boolean; uid:number; x:number; y:number; vx:number; vy:number; age:number; life:number; damage:number; weapon:Weapon; level:number; pierce:number; bounce:number; hits:Set<number>; returning:boolean; turned:boolean; turret:boolean; child:boolean; seed:number; lastHit:number; anchorY?:number; stage:number };
 export type Bullet = {active:boolean;x:number;y:number;vx:number;vy:number;damage:number;life:number;color:string};
@@ -23,13 +24,13 @@ export class Random {
  shuffle<T>(a:T[]){return [...a].map(v=>({v,r:this.next()})).sort((a,b)=>a.r-b.r).map(x=>x.v);}
 }
 export class Run {
- rng:Random; hero:Hero; stats:Stats={...BASE}; x=W/2; hp=100; shield=0; gold=35; curse=0; baseCurse=0; level=1; xp=0; needXp=24;
+ rng:Random; hero:Hero; stats:Stats={...BASE}; x=W/2; hp=100; shield=0; gold=35; curse=0; baseCurse=0; level=1; xp=0; needXp=experienceForLevel(1);
  floor=1; row=0; col=1; kills=0; bossKills=0; totalGold=0; time=0; roomTime=0; duration=28; spawnTimer=0; skillCD=0; invincible=0; combo=0; comboTimer=0; second=0; strongBoss=false; fortune=0; rerolls=2; bossReward=0;
  phase:'combat'|'between'|'dead'|'victory'='combat'; panel:Panel=null; revision=0; room:NodeType='battle'; route:NodeType[][]=[]; visited:{row:number;col:number}[]=[];
  weapons:{id:string;level:number;timer:number;burst:number;forged?:number;awakened?:boolean;volleys?:number}[]=[]; passives:Record<string,number>={}; equipment:Record<string,Gear>={}; extraMods:Mods={};
  foundFamilies=new Set<string>(); foundGearIds=new Set<string>(); overdrive=0; overdriveTime=0; mutationId=0; mutationTimer=5; bounty?:{id:string;progress:number;claimed:boolean};
  enemies:Enemy[]=[]; shots:Shot[]=[]; bullets:Bullet[]=[]; drops:Drop[]=[]; vfx:Vfx[]=[]; hazards:Hazard[]=[]; turrets:{x:number;y:number;life:number;timer:number;weapon:Weapon;level:number}[]=[];
- loot:Gear[]=[]; lootReturn:Panel=null; pendingLevels=0; choices:Choice[]=[]; shop:{kind:'gear'|'weapon'|'passive'|'heal';id?:string;gear?:Gear;cost:number;sold:boolean}[]=[]; refreshes=0; eventId=''; notices:string[]=[]; seen=new Set<string>();
+ inventory:Gear[]=[]; favoriteGear=new Set<number>(); pendingLevels=0; choices:Choice[]=[]; shop:{kind:'gear'|'weapon'|'passive'|'heal';id?:string;gear?:Gear;cost:number;sold:boolean}[]=[]; refreshes=0; eventId=''; notices:string[]=[]; seen=new Set<string>();
  private uid=1; private effects:{effect:Effect;stacks:number;key:string}[]=[]; private effectCooldown=new Map<string,number>(); private shotPool:Shot[]=[]; private bulletPool:Bullet[]=[];
  onSound?:(kind:string)=>void;
  constructor(heroId:string,public meta:Save,seed?:number,public mode:GameMode='tower'){
@@ -58,16 +59,19 @@ export class Run {
  get setCounts(){return countSets(this.equipment);}
  get attackSpeed(){return this.stats.speed*(1+this.overdrive);}
  gearWeight(def:Gear['def']){return def.set&&this.foundFamilies.has(def.set)&&!this.foundGearIds.has(def.id)?1+FAMILY_BIAS:1;}
- receiveGear(gear:Gear){this.loot.push(gear);this.foundGearIds.add(gear.def.id);if(gear.def.set)this.foundFamilies.add(gear.def.set);this.seen.add(gear.def.id);}
+ receiveGear(gear:Gear){
+  if(this.inventory.some(g=>g.uid===gear.uid)||Object.values(this.equipment).some(g=>g.uid===gear.uid))return;
+  this.inventory.push(gear);this.foundGearIds.add(gear.def.id);if(gear.def.set)this.foundFamilies.add(gear.def.set);this.seen.add(gear.def.id);this.note(gear.def.name+' 已收入背包');this.revision++;
+ }
  private rollGearDef(){const total=EQUIPMENT.reduce((n,g)=>n+this.gearWeight(g),0);let roll=this.rng.next()*total;for(const gear of EQUIPMENT){roll-=this.gearWeight(gear);if(roll<0)return gear;}return EQUIPMENT[EQUIPMENT.length-1];}
  get mutation(){return MUTATIONS[this.mutationId];}
  get bossId(){return bossIndex(this.floor);}
  takeBounty(id:string){if(this.bounty||!BOUNTIES.some(b=>b.id===id))return false;this.bounty={id,progress:0,claimed:false};this.revision++;return true;}
  bountyStep(id:string,n=1){if(this.bounty?.id===id&&!this.bounty.claimed){this.bounty.progress+=n;this.revision++;}}
- claimBounty(){const b=BOUNTIES.find(b=>b.id===this.bounty?.id);if(!b||!this.bounty||this.bounty.claimed||this.bounty.progress<b.goal)return false;this.bounty.claimed=true;if(b.reward==='gear'){this.receiveGear(this.createGear(3));this.lootReturn=this.panel==='forge'?'forge':this.panel==='shop'?'shop':null;this.open('loot');}else if(b.reward==='gold')this.addGold(60+this.floor*8);else this.rerolls+=2;this.note(`完成悬赏：${b.name}`);this.revision++;return true;}
+ claimBounty(){const b=BOUNTIES.find(b=>b.id===this.bounty?.id);if(!b||!this.bounty||this.bounty.claimed||this.bounty.progress<b.goal)return false;this.bounty.claimed=true;if(b.reward==='gear'){this.receiveGear(this.createGear(3));}else if(b.reward==='gold')this.addGold(60+this.floor*8);else this.rerolls+=2;this.note(`完成悬赏：${b.name}`);this.revision++;return true;}
  forgeCost(index:number,awaken=false){const w=this.weapons[index];return w?(awaken?120+this.floor*10:45+this.floor*8+(w.forged||0)*25):Infinity;}
  forgeWeapon(index:number,awaken=false){const w=this.weapons[index],cost=this.forgeCost(index,awaken);if(this.panel!=='forge'||!w||this.gold<cost|| (awaken?(w.level<5||!w.forged||w.awakened):(w.forged||0)>=3))return false;this.gold-=cost;if(awaken)w.awakened=true;else w.forged=(w.forged||0)+1;this.note(`${w.awakened?'觉醒':'锻造'} ${WEAPONS.find(x=>x.id===w.id)!.name}`);this.revision++;return true;}
- reforgeGear(slot:string){const old=this.equipment[slot],cost=65+this.floor*6;if(this.panel!=='forge'||!old||this.gold<cost)return false;this.gold-=cost;this.receiveGear(this.createGear(old.quality,old.def));this.lootReturn='forge';this.open('loot');return true;}
+ reforgeGear(slot:string){const old=this.equipment[slot],cost=65+this.floor*6;if(this.panel!=='forge'||!old||this.gold<cost)return false;this.gold-=cost;this.receiveGear(this.createGear(old.quality,old.def));return true;}
  open(panel:Panel){this.panel=panel;this.revision++;}
  note(text:string){this.notices.unshift(text);this.notices.length=Math.min(7,this.notices.length);}
  power(){return this.stats.damage*(1+this.curse*this.stats.cursePower)*(1+Math.min(12,this.gold/100)*this.stats.goldPower)*(this.hp/this.stats.maxHp<.35?1+this.stats.lowDamage:1);}
@@ -81,26 +85,38 @@ export class Run {
   if(quality>=3)effects.push(fxLegend(def.tag,quality));
   return{uid:this.uid++,def,quality,affixes,mods,effects};
  }
- equip(gear:Gear){this.foundGearIds.add(gear.def.id);if(gear.def.set)this.foundFamilies.add(gear.def.set);this.equipment[gear.def.slot]=gear;this.seen.add(gear.def.id);this.recalculate();this.note(`装备 ${gear.def.name}`);this.revision++;}
- chooseLoot(take:boolean){if(this.panel!=='loot')return;const gear=this.loot.shift();if(gear){if(take)this.equip(gear);else this.addGold(8+gear.quality*9);}this.open(null);if(!this.loot.length&&this.lootReturn){const panel=this.lootReturn;this.lootReturn=null;this.open(panel);}else this.checkPanels();}
+ equip(gear:Gear){
+  const old=this.equipment[gear.def.slot];if(old?.uid===gear.uid)return;
+  this.inventory=this.inventory.filter(g=>g.uid!==gear.uid);
+  if(old&&!this.inventory.some(g=>g.uid===old.uid))this.inventory.push(old);
+  this.foundGearIds.add(gear.def.id);if(gear.def.set)this.foundFamilies.add(gear.def.set);this.equipment[gear.def.slot]=gear;this.seen.add(gear.def.id);this.recalculate();this.note('装备 '+gear.def.name);this.revision++;
+ }
+ equipFromInventory(uid:number){const gear=this.inventory.find(g=>g.uid===uid);if(!gear||this.phase==='dead'||this.phase==='victory')return false;this.equip(gear);return true;}
+ stashEquipped(slot:string){const gear=this.equipment[slot];if(!gear||this.phase==='dead'||this.phase==='victory')return false;delete this.equipment[slot];this.inventory.push(gear);this.recalculate();this.note(gear.def.name+' 已卸回背包');this.revision++;return true;}
+ toggleFavorite(uid:number){if(!this.inventory.some(g=>g.uid===uid)&&!Object.values(this.equipment).some(g=>g.uid===uid))return false;if(this.favoriteGear.has(uid))this.favoriteGear.delete(uid);else this.favoriteGear.add(uid);this.revision++;return true;}
+ salvageGear(uid:number){const i=this.inventory.findIndex(g=>g.uid===uid);if(i<0||this.favoriteGear.has(uid)||this.phase==='dead'||this.phase==='victory')return false;const [gear]=this.inventory.splice(i,1);this.addGold(salvageValue(gear));this.note('拆解 '+gear.def.name);this.revision++;return true;}
  addWeapon(id:string,replace?:number){const own=this.weapons.find(w=>w.id===id);if(own)own.level=Math.min(5,own.level+1);else if(this.weapons.length<3)this.weapons.push({id,level:1,timer:.2,burst:0});else if(replace!==undefined)this.weapons[replace]={id,level:1,timer:.2,burst:0};else return false;this.seen.add(id);this.note(`取得 ${WEAPONS.find(w=>w.id===id)?.name}`);this.revision++;return true;}
- addPassive(id:string){const p=PASSIVES.find(p=>p.id===id);if(!p)return;this.passives[id]=Math.min(p.max,(this.passives[id]||0)+1);this.seen.add(id);this.recalculate();this.note(`领悟 ${p.name}`);this.revision++;}
+ get availablePassives(){return PASSIVES.filter(p=>(this.passives[p.id]||0)<p.max);}
+ addPassive(id:string){const p=PASSIVES.find(p=>p.id===id);if(!p||(this.passives[id]||0)>=p.max)return false;this.passives[id]=(this.passives[id]||0)+1;this.seen.add(id);this.recalculate();this.note('领悟 '+p.name);this.revision++;return true;}
+ private rewardPassive(preferred?:string){const available=this.availablePassives;if(!available.length){this.addGold(35);this.note('所有被动已满层：转为金币');return;}const p=available.find(p=>p.id===preferred)||this.rng.pick(available);this.addPassive(p.id);}
  levelChoices(){
-  const available=PASSIVES.filter(p=>(this.passives[p.id]||0)<p.max);const weight=(p:Passive)=>this.weapons.some(w=>WEAPONS.find(x=>x.id===w.id)?.tag===p.tag)?3:1;
+  const available=this.availablePassives;const weight=(p:Passive)=>this.weapons.some(w=>WEAPONS.find(x=>x.id===w.id)?.tag===p.tag)?3:1;
   const passives=available.map(p=>({id:p.id,r:this.rng.next()**(1/weight(p))})).sort((a,b)=>b.r-a.r).slice(0,2).map(p=>({kind:'passive' as const,id:p.id}));
   const weaponPool=WEAPONS.filter(w=>!this.weapons.some(o=>o.id===w.id&&o.level>=5));const own=this.weapons.filter(w=>w.level<5);
   const id=own.length&&this.rng.next()<.55?this.rng.pick(own).id:this.rng.pick(weaponPool).id;
-  this.choices=this.rng.shuffle([...passives,{kind:'weapon' as const,id}]);
+  const choices:Choice[]=[...passives,{kind:'weapon',id}];
+  for(const w of this.rng.shuffle(weaponPool))if(choices.length<3&&!choices.some(c=>c.kind==='weapon'&&c.id===w.id))choices.push({kind:'weapon',id:w.id});
+  this.choices=this.rng.shuffle(choices);
  }
- chooseUpgrade(index:number,replace?:number){if(this.panel!=='level'||this.pendingLevels<=0)return false;const c=this.choices[index];if(!c)return false;if(c.kind==='weapon'){if(!this.addWeapon(c.id,replace))return false;}else this.addPassive(c.id);this.pendingLevels--;this.open(null);this.onSound?.('upgrade');this.checkPanels();return true;}
+ chooseUpgrade(index:number,replace?:number){if(this.panel!=='level'||this.pendingLevels<=0)return false;const c=this.choices[index];if(!c)return false;if(c.kind==='weapon'){if(!this.addWeapon(c.id,replace))return false;}else if(!this.addPassive(c.id)){this.levelChoices();this.revision++;return false;}this.pendingLevels--;this.open(null);this.onSound?.('upgrade');this.checkPanels();return true;}
  reroll(){if(this.rerolls<=0)return;this.rerolls--;this.levelChoices();this.revision++;}
- gainXp(amount:number){this.xp+=amount*this.stats.xpBonus;while(this.xp>=this.needXp){this.xp-=this.needXp;this.level++;this.needXp=24+this.level*13;this.pendingLevels++;}}
+ gainXp(amount:number){this.xp+=amount*this.stats.xpBonus;while(this.xp>=this.needXp){this.xp-=this.needXp;this.level++;this.needXp=experienceForLevel(this.level);this.pendingLevels++;}}
  addGold(amount:number){const n=Math.round(amount*this.stats.goldBonus);this.gold+=n;this.totalGold+=n;}
  heal(n:number){this.hp=Math.min(this.stats.maxHp,this.hp+n);}
- checkPanels(){if(this.phase==='dead'||this.phase==='victory')return;if(this.panel)return;if(this.pendingLevels>0){this.levelChoices();this.open('level');}else if(this.loot.length)this.open('loot');else if(this.phase==='between')this.open('clear');}
+ checkPanels(){if(this.phase==='dead'||this.phase==='victory')return;if(this.panel)return;if(this.pendingLevels>0){this.levelChoices();this.open('level');}else if(this.phase==='between')this.open('clear');}
  startCombat(type:NodeType){
   this.phase='combat';this.room=type;this.roomTime=0;this.duration=type==='elite'?35+Math.min(20,this.floor)*2:26+Math.min(20,this.floor)*2;this.spawnTimer=.4;this.mutationTimer=5;this.fortune=0;this.enemies=[];this.drops=[];this.hazards=[];this.turrets=[];this.releaseAll();this.open(null);
-  if(type==='boss'){const boss=this.spawnEnemy(ENEMIES[4],W/2,105,true,this.bossId);this.note(`${BOSSES[this.bossId].name} 已苏醒`);boss.action=2;if(this.floor>8&&this.floor%8===0){const partner=this.spawnEnemy(ENEMIES[4],510,105,true,(this.bossId+3)%8);for(const e of [boss,partner]){e.maxHp*=.65;e.hp=e.maxHp;}partner.action=3;}this.open('bossintro');}
+  if(type==='boss'){const boss=this.spawnEnemy(ENEMIES[4],W/2,105,true,this.bossId);this.note(`${BOSSES[this.bossId].name} 已苏醒`);boss.action=2;if(isDualBossFloor(this.floor)){const partner=this.spawnEnemy(ENEMIES[4],510,105,true,(this.bossId+3)%8);for(const e of [boss,partner]){e.maxHp*=.65;e.hp=e.maxHp;}partner.action=3;}this.open('bossintro');}
   if(type==='elite')this.spawnEnemy(this.rng.pick(ENEMIES.filter(e=>e.floor<=this.floor+1)),W/2,75,true);
  }
  enterNode(col:number){
@@ -112,25 +128,25 @@ export class Run {
   else this.open('map');
  }
  makeShop(){
-  this.shop=[{kind:'gear',gear:this.createGear(1),cost:50+this.floor*8,sold:false},{kind:'weapon',id:this.rng.pick(WEAPONS).id,cost:45+this.floor*6,sold:false},{kind:'passive',id:this.rng.pick(PASSIVES.filter(p=>(this.passives[p.id]||0)<p.max)).id,cost:35+this.floor*5,sold:false},{kind:'heal',cost:20+this.floor*3,sold:false}];this.revision++;
+  const available=this.availablePassives,passive=available.length?this.rng.pick(available):undefined;
+  this.shop=[{kind:'gear',gear:this.createGear(1),cost:50+this.floor*8,sold:false},{kind:'weapon',id:this.rng.pick(WEAPONS).id,cost:45+this.floor*6,sold:false},passive?{kind:'passive',id:passive.id,cost:35+this.floor*5,sold:false}:{kind:'gear',gear:this.createGear(2),cost:65+this.floor*8,sold:false},{kind:'heal',cost:20+this.floor*3,sold:false}];this.revision++;
  }
  refreshShop(){const cost=15+this.refreshes*10;if(this.gold<cost)return;this.gold-=cost;this.refreshes++;this.makeShop();}
- buy(index:number,replace?:number){const item=this.shop[index];if(!item||item.sold||this.gold<item.cost)return false;if(item.kind==='weapon'&&!this.addWeapon(item.id!,replace))return false;
-  this.gold-=item.cost;item.sold=true;if(item.kind==='gear'){this.receiveGear(item.gear!);this.lootReturn='shop';this.open('loot');}if(item.kind==='passive')this.addPassive(item.id!);if(item.kind==='heal')this.heal(35);this.revision++;return true;
+ buy(index:number,replace?:number){const item=this.shop[index];if(this.panel!=='shop'||!item||item.sold||this.gold<item.cost)return false;if(item.kind==='passive'&&!this.availablePassives.some(p=>p.id===item.id))return false;if(item.kind==='weapon'&&!this.addWeapon(item.id!,replace))return false;
+  this.gold-=item.cost;item.sold=true;if(item.kind==='gear'){this.receiveGear(item.gear!);}if(item.kind==='passive')this.addPassive(item.id!);if(item.kind==='heal')this.heal(35);this.revision++;return true;
  }
  eventAction(o:EventOption,replace?:number){
   if(this.panel!=='event'&&this.panel!=='altar')return false;
   if(this.gold<(o.cost||0)||this.hp<=(o.blood||0))return false;if(o.op==='upgrade'&&!Object.keys(this.equipment).length)return false;
   if(o.op==='weapon'&&this.weapons.length>=3&&replace===undefined)return false;
   this.gold-=o.cost||0;this.hp-=o.blood||0;
-  const randomPassive=()=>this.rng.pick(PASSIVES.filter(p=>(this.passives[p.id]||0)<p.max)).id;
   switch(o.op){
    case'gear':this.receiveGear(this.createGear(o.amount));if(o.amount===0)this.addGold(20);break;
    case'weapon':this.addWeapon(this.rng.pick(WEAPONS).id,replace);if(o.risk===1)this.baseCurse++;break;
-   case'passive':this.addPassive(o.amount===2?'lucky':randomPassive());break;
+   case'passive':this.rewardPassive(o.amount===2?'lucky':undefined);break;
    case'heal':this.heal(o.amount);break;
    case'gold':this.addGold(o.amount);if(o.risk&&this.rng.next()<o.risk){this.hp=Math.max(1,this.hp-18);this.note('暗藏机关：失去 18 生命');}break;
-   case'curse':this.baseCurse+=o.amount===3?2:1;if(o.amount===1)this.addPassive(randomPassive());else if(o.amount===4)this.addGold(70);else this.receiveGear(this.createGear(o.amount===3?3:1));break;
+   case'curse':this.baseCurse+=o.amount===3?2:1;if(o.amount===1)this.rewardPassive();else if(o.amount===4)this.addGold(70);else this.receiveGear(this.createGear(o.amount===3?3:1));break;
    case'cleanse':this.baseCurse=Math.max(0,this.baseCurse-o.amount);if(!o.cost&&!o.blood)this.heal(18);break;
    case'upgrade':{const gear=this.rng.pick(Object.values(this.equipment));if(gear.quality<4){gear.quality++;for(const[k,v]of Object.entries(gear.mods))gear.mods[k as keyof Stats]=v!*1.18;gear.effects=gear.effects.map(e=>({...e,amount:e.amount*1.18}));}break;}
    case'gamble':if(this.rng.next()<.55){this.addGold(o.amount);this.note('赌赢了：金币入袋');}else this.note('赌输了：空空如也');break;
@@ -142,7 +158,7 @@ export class Run {
    case'sacrifice':this.extraMods.maxHp=(this.extraMods.maxHp||0)-o.amount;this.extraMods.damage=(this.extraMods.damage||0)+.3;break;
    case'trade':this.addGold(o.amount);break;
   }
-  this.recalculate();this.open(null);if(this.loot.length)this.open('loot');else this.next();return true;
+  this.recalculate();this.open(null);this.next();return true;
  }
  releaseAll(){for(const s of this.shots){s.active=false;this.shotPool.push(s);}for(const b of this.bullets){b.active=false;this.bulletPool.push(b);}this.shots=[];this.bullets=[];}
  spawnEnemy(def:EnemyDef,x=this.rng.range(50,W-50),y=-25,elite=false,boss=-1):Enemy{

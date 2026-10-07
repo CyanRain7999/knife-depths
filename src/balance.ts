@@ -1,4 +1,7 @@
 // Fixed floor scaling: enemies do not secretly scale with the player's build.
+export const PASSIVE_MAX_STACKS=4;
+// After level 5, the quadratic term spaces out late-game upgrade interruptions.
+export function experienceForLevel(level:number){return 32+12*level+3*Math.max(0,level-5)**2;}
 export const COMBAT_FEEL={
  playerShotSpeed:1.8,
  playerShotScale:3,

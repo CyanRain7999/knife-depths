@@ -2,31 +2,31 @@ import {describe,it,expect} from 'vitest';
 import {Run,PLAYER_Y} from '../src/engine';
 import {ENEMIES,WEAPONS,regionName,bossPhaseName} from '../src/data';
 import {freshSave} from '../src/save';
-import {BOUNTIES,MUTATIONS,TOWER_LIMIT} from '../src/tower';
+import {BOUNTIES,MUTATIONS,TOWER_LIMIT,isDualBossFloor} from '../src/tower';
 import {characterSVG,CHARACTER_STYLES} from '../src/chibi';
 const make=()=>{const r=new Run('knife',freshSave(),20261006);r.weapons=[];r.spawnTimer=100;return r;};
 const weapon=(id:string)=>WEAPONS.find(w=>w.id===id)!;
 const mob=(r:Run,x=360,y=300,hp=10000)=>r.spawnEnemy({...ENEMIES[0],hp,speed:0,behavior:'walk'},x,y);
 function sim(r:Run,time:number){for(let i=0;i<Math.ceil(time*60);i++)r.tick(1/60,0);}
 describe('tower modes and rewards',()=>{
- it('continues beyond the old eighth floor, ends at 24 and keeps endless climbing',()=>{
+ it('continues beyond the old eighth floor, ends at 12 and keeps endless climbing',()=>{
   const r=make();r.floor=8;r.row=4;r.phase='between';r.next();expect(r.floor).toBe(9);expect(r.phase).toBe('combat');
-  r.floor=TOWER_LIMIT;r.row=4;r.phase='between';r.next();expect(r.phase).toBe('victory');expect(r.floor).toBe(24);
-  const e=new Run('knife',freshSave(),1,'endless');e.floor=24;e.row=4;e.phase='between';e.next();expect(e.floor).toBe(25);expect(e.phase).toBe('combat');
+  r.floor=TOWER_LIMIT;r.row=4;r.phase='between';r.next();expect(r.phase).toBe('victory');expect(r.floor).toBe(12);
+  const e=new Run('knife',freshSave(),1,'endless');e.floor=12;e.row=4;e.phase='between';e.next();expect(e.floor).toBe(13);expect(e.phase).toBe('combat');
  });
  it('can spawn and phase all bosses through forty floors without invalid definitions',()=>{
   for(let floor=1;floor<=40;floor++){
    const r=make();r.floor=floor;r.startCombat('boss');r.open(null);r.weapons=[];
-   expect(r.enemies).toHaveLength(floor>8&&floor%8===0?2:1);
+   expect(r.enemies).toHaveLength(isDualBossFloor(floor)?2:1);
    for(const e of r.enemies){expect(Number.isFinite(e.hp)).toBe(true);e.hp=e.maxHp*.2;}
    r.tick(.02,0);for(const e of r.enemies)expect(e.phase).toBe(floor>8||e.boss===7?2:1);
    expect(regionName(floor)).not.toContain('undefined');expect(bossPhaseName(r.bossId,2)).toBeTruthy();
   }
  });
  it('requires both bosses to die rather than clearing the second on the first kill',()=>{
-  const r=make();r.floor=16;r.startCombat('boss');r.open(null);const [first,second]=r.enemies;
+  const r=make();r.floor=12;r.startCombat('boss');r.open(null);const [first,second]=r.enemies;
   r.damageEnemy(first,1e12);expect(first.dead).toBe(true);expect(second.dead).toBe(false);expect(r.phase).toBe('combat');
-  r.loot=[];r.pendingLevels=0;r.damageEnemy(second,1e12);r.tick(.02,0);expect(r.phase).toBe('between');expect(r.bossKills).toBe(2);
+  r.pendingLevels=0;r.damageEnemy(second,1e12);r.tick(.02,0);expect(r.phase).toBe('between');expect(r.bossKills).toBe(2);
  });
  it('pays a chosen bounty once and resets contracts on a new floor',()=>{
   const r=make();expect(r.takeBounty('hunter')).toBe(true);expect(r.takeBounty('breaker')).toBe(false);expect(r.claimBounty()).toBe(false);
@@ -40,9 +40,9 @@ describe('tower modes and rewards',()=>{
   const s=r.launch(weapon('knife'),5,r.x,PLAYER_Y,-Math.PI/2);expect(s.damage).toBeCloseTo(weapon('knife').damage*2.12*r.power()*1.54);expect(s.pierce).toBe(1);
   r.releaseAll();r.open(null);for(let i=0;i<4;i++){r.weapons[0].timer=0;r.tick(.01,0);}expect(r.shots.length).toBe(5);
  });
- it('reforges the same equipment definition and returns to the forge after a choice',()=>{
+ it('reforges the same equipment definition and keeps the forge open while storing the result',()=>{
   const r=make();const gear=r.createGear(3);r.equip(gear);r.gold=1000;r.open('forge');expect(r.reforgeGear(gear.def.slot)).toBe(true);
-  expect(r.loot[0].def.id).toBe(gear.def.id);expect(r.loot[0].quality).toBeGreaterThanOrEqual(gear.quality);r.chooseLoot(true);expect(r.panel).toBe('forge');
+  expect(r.inventory[0].def.id).toBe(gear.def.id);expect(r.inventory[0].quality).toBeGreaterThanOrEqual(gear.quality);expect(r.panel).toBe('forge');r.equipFromInventory(r.inventory[0].uid);expect(r.inventory).toContain(gear);expect(r.panel).toBe('forge');
  });
  it('executes storm, rift and shield mutations while preserving a calm opening',()=>{
   const r=make();expect(r.mutation.id).toBe('calm');r.mutationId=MUTATIONS.findIndex(m=>m.id==='storm');r.mutationTimer=.01;r.tick(.02,0);expect(r.bullets.length).toBe(3);
@@ -86,8 +86,8 @@ describe('new passive combinations and art',()=>{
   r.addPassive('clearair');r.addPassive('orbitalcraft');const e=mob(r);e.barrier=1;r.enemyBullet(r.x,PLAYER_Y,0,0,9);r.trigger('skill');expect(e.barrier).toBe(0);expect(r.bullets[0].active).toBe(false);expect(r.shots.filter(s=>s.weapon.pattern==='satellite')).toHaveLength(3);
   r.invincible=0;const hp=r.hp;r.tick(.01,0);expect(r.hp).toBe(hp);expect(r.bullets).toHaveLength(0);
  });
- it('keeps repeatable tower passives growing after regular build caps',()=>{
-  const r=make();for(let i=0;i<10;i++)r.addPassive('towerwill');expect(r.passives.towerwill).toBe(10);expect(r.stats.damage).toBeCloseTo(1.4);expect(r.stats.maxHp).toBe(120);
+ it('caps tower passives at four and excludes them from rewards',()=>{
+  const r=make();for(let i=0;i<10;i++)r.addPassive('towerwill');expect(r.passives.towerwill).toBe(4);expect(r.stats.damage).toBeCloseTo(1.16);expect(r.stats.maxHp).toBe(108);expect(r.availablePassives.some(p=>p.id==='towerwill')).toBe(false);expect(r.addPassive('towerwill')).toBe(false);
  });
  it('exports twelve distinct self-contained chibi drawings without remote assets',()=>{
   const drawings=Object.keys(CHARACTER_STYLES).map(characterSVG);expect(new Set(drawings).size).toBe(12);for(const svg of drawings){expect(svg).toContain('viewBox="0 0 96 120"');expect(svg).not.toContain('href=');expect(svg).toContain('<ellipse');}
