@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { Run, W, H, PLAYER_Y } from './engine';
-import { BOSSES, HEROES, QUALITY_COLORS, regionName } from './data';
+import { BOSSES, HEROES, EQUIPMENT, QUALITY_COLORS, regionName } from './data';
 import { makeTextures, shade } from './art';
+import {dropIconUrl} from './item-icons';
 import { COMBAT_FEEL } from './balance';
 import type {Shot} from './engine';
 export class DungeonScene extends Phaser.Scene {
@@ -9,7 +10,7 @@ export class DungeonScene extends Phaser.Scene {
  private sprites=new Map<string,Phaser.GameObjects.Image>();private pool=new Map<string,Phaser.GameObjects.Image[]>();private floating=new Map<object,Phaser.GameObjects.Text>();private textPool:Phaser.GameObjects.Text[]=[];
  private dynamic!:Phaser.GameObjects.Graphics;private player!:Phaser.GameObjects.Image;private shadow!:Phaser.GameObjects.Ellipse;private background!:Phaser.GameObjects.Graphics;private keys?:Record<string,Phaser.Input.Keyboard.Key>;private lastFloor=0;private lastInv=0;
  constructor(){super('dungeon');}
- preload(){for(const hero of HEROES)this.load.svg(`chibi-${hero.id}`,`${import.meta.env.BASE_URL}characters/${hero.id}.svg`,{width:96,height:120});}
+ preload(){for(const gear of EQUIPMENT)this.load.svg('drop-'+gear.id,dropIconUrl(gear.id),{width:40,height:40});for(const hero of HEROES)this.load.svg(`chibi-${hero.id}`,`${import.meta.env.BASE_URL}characters/${hero.id}.svg`,{width:96,height:120});}
  create(){
   makeTextures(this);this.background=this.add.graphics();this.dynamic=this.add.graphics();this.shadow=this.add.ellipse(W/2,PLAYER_Y+36,60,14,0x000000,.4);this.player=this.add.image(W/2,PLAYER_Y,'hero-knife').setScale(2).setDepth(10);
   this.keys=this.input.keyboard?.addKeys('A,D,LEFT,RIGHT,SPACE,ESC,P') as Record<string,Phaser.Input.Keyboard.Key>;
@@ -50,7 +51,7 @@ export class DungeonScene extends Phaser.Scene {
   for(const s of run.shots)if(s.active)this.paintSpecialShot(s,g,run);
   for(const e of run.enemies)if(!e.dead&&e.doom>0){g.lineStyle(2,0xe5c192,.8);g.strokeCircle(e.x+e.def.radius+7,e.y-10,6);g.lineBetween(e.x+e.def.radius+7,e.y-10,e.x+e.def.radius+7,e.y-14);}
   for(const b of run.bullets){const radius=COMBAT_FEEL.enemyBulletRadius;g.fillStyle(color(b.color),.24);g.fillCircle(b.x,b.y,radius+6);g.fillStyle(0x191d29,.8);g.fillCircle(b.x,b.y,radius+1);g.fillStyle(color(b.color));g.fillCircle(b.x,b.y,radius);g.fillStyle(0xfff0cb);g.fillRect(b.x-2,b.y-2,4,4);}
-  for(const d of run.drops){const sprite=this.use(`d${d.uid}`,d.kind==='gear'?'gear':d.kind,used);sprite.setPosition(d.x,d.y+Math.sin(d.age*5)*2).setScale(d.kind==='gear'?2.5:1.6);if(d.kind==='gear'){const c=color(QUALITY_COLORS[d.gear!.quality]);sprite.setTint(c);g.fillStyle(c,.06);g.fillRect(d.x-9,d.y-90,18,90);g.fillStyle(c,.13);g.fillRect(d.x-3,d.y-110,6,110);g.lineStyle(1,c,.6);g.strokeEllipse(d.x,d.y+14,30,9);}}
+  for(const d of run.drops){const sprite=this.use(`d${d.uid}`,d.kind==='gear'?'drop-'+d.gear!.def.id:d.kind,used);sprite.setPosition(d.x,d.y+Math.sin(d.age*5)*2).setScale(d.kind==='gear'?2.5:1.6);if(d.kind==='gear'){const c=color(QUALITY_COLORS[d.gear!.quality]);sprite.clearTint().setDisplaySize(40,40);g.fillStyle(c,.06);g.fillRect(d.x-9,d.y-90,18,90);g.fillStyle(c,.13);g.fillRect(d.x-3,d.y-110,6,110);g.lineStyle(1,c,.6);g.strokeEllipse(d.x,d.y+14,30,9);}}
   const effects=new Set<object>();for(const v of run.vfx){const alpha=v.life/v.max;
    if(v.text){effects.add(v);let text=this.floating.get(v);if(!text){text=this.textPool.pop()||this.add.text(0,0,'',{fontFamily:'monospace',fontSize:'14px',fontStyle:'bold',stroke:'#15151f',strokeThickness:3});this.floating.set(v,text);text.setText(v.text).setColor(v.color).setOrigin(.5).setFontSize(v.kind==='skill'?20:v.kind==='crit'?18:12).setVisible(true).setDepth(20);}text.setPosition(v.x,v.y-(1-alpha)*28).setAlpha(Math.min(1,alpha*2));}
    if(v.kind==='chain'){g.lineStyle(2,color(v.color),alpha);g.beginPath();g.moveTo(v.x,v.y);g.lineTo((v.x+(v.tx||0))/2+10,(v.y+(v.ty||0))/2);g.lineTo(v.tx||v.x,v.ty||v.y);g.strokePath();}
